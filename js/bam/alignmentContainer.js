@@ -26,7 +26,9 @@
 
 var igv = (function (igv) {
 
-    var downSample = true;
+    igv.version = "Peter Mac build: 10-May-2016";
+    var downSample = false;
+    
 
     function canBePaired(alignment) {
         return alignment.isPaired() &&
