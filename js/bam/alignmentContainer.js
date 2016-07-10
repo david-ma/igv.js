@@ -26,7 +26,7 @@
 
 var igv = (function (igv) {
 
-    igv.version = "Peter Mac build: 10-May-2016";
+    igv.version = "Peter Mac build: 11-July-2016";
     var downSample = false;
     
 
