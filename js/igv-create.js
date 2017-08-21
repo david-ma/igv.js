@@ -27,7 +27,7 @@ var igv = (function (igv) {
 
 
     var igvjs_version = "beta";
-    igv.version = igvjs_version;
+    igv.version = "Peter Mac build: 21-August-2017, igv.js v1.0.9 beta"; // DKGM - Update this before building so we can easily query the version in production
 
     /**
      * Create an igv.browser instance.  This object defines the public API for interacting with the genome browser.
