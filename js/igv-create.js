@@ -29,6 +29,8 @@ var igv = (function (igv) {
     var igvjs_version = "@VERSION";
     igv.version = "Peter Mac build: 22-May-2018, igv.js v2.0.0 beta 3"; // DKGM - Update this before building so we can easily query the version in production
 
+    let allBrowsers = [];
+
     /**
      * Create an igv.browser instance.  This object defines the public API for interacting with the genome browser.
      *
@@ -38,13 +40,6 @@ var igv = (function (igv) {
      */
     igv.createBrowser = function (parentDiv, config) {
 
-        var browser,
-            promise;
-
-        if (igv.browser) {
-            //console.log("Attempt to create 2 browsers.");
-            igv.removeBrowser();
-        }
 
         if (undefined === config) config = {};
 
@@ -58,7 +53,9 @@ var igv = (function (igv) {
         // Set track order explicitly. Otherwise they will be ordered randomly as each completes its async load
         setTrackOrder(config);
 
-        browser = new igv.Browser(config, $('<div class="igv-track-container-div">')[0]);
+        const browser = new igv.Browser(config, $('<div class="igv-track-container-div">')[0]);
+
+        browser.parent = parentDiv;
 
         $(parentDiv).append(browser.$root);
 
@@ -67,7 +64,8 @@ var igv = (function (igv) {
         browser.$content = $('<div class="igv-content-div">');
         browser.$root.append(browser.$content);
 
-        browser.$contentHeader = $('<div id="igv-content-header">');
+        let content_header_id =
+        browser.$contentHeader = $('<div>', { class:'igv-content-header' });
         browser.$content.append(browser.$contentHeader);
 
         browser.$content.append(browser.trackContainerDiv);
@@ -76,44 +74,43 @@ var igv = (function (igv) {
         browser.userFeedback = new igv.UserFeedback(browser.$content);
         browser.userFeedback.hide();
 
-        igv.popover = new igv.Popover(browser.$content);
+        browser.popover = new igv.Popover(browser.$content, browser);
 
-        igv.alertDialog = new igv.AlertDialog(browser.$content);
+        browser.alertDialog = new igv.AlertDialog(browser.$content, browser);
 
-        igv.inputDialog = new igv.InputDialog(browser.$root);
+        browser.inputDialog = new igv.InputDialog(browser.$root, browser);
 
-        igv.trackRemovalDialog = new igv.TrackRemovalDialog(browser.$root);
+        browser.trackRemovalDialog = new igv.TrackRemovalDialog(browser.$root, browser);
 
-        igv.dataRangeDialog = new igv.DataRangeDialog(browser.$root);
+        browser.dataRangeDialog = new igv.DataRangeDialog(browser.$root, browser);
 
-        // TODO fix this
-        // if (!config.showNavigation) {
-        //     browser.$contentHeader.append($('<div id="igv-logo-nonav">'));
-        // }
+        if (config.apiKey) igv.setGoogleApiKey(config.apiKey);
 
-        if (config.apiKey) igv.setApiKey(config.apiKey);
         if (config.oauthToken) igv.setOauthToken(config.oauthToken);
 
-        promise = doPromiseChain(browser,config);
 
-        if (config.promisified) {
+        return doPromiseChain(browser, config)
+            .then(function (browser) {
 
-            return promise;
+                allBrowsers.push(browser);
 
-        } else {
+                // Backward compatibility -- globally visible.   This will be removed in a future release
+                if(!igv.browser) {
+                    igv.browser = browser;
+                }
 
-            promise
-                .then(function (browser) {
-                    console.log("igv browser ready");
-                })
-                .catch(function (error) {
-                    console.error(error);
-                    alert("Error creating igv browser");
-                });
-            return browser;
-        }
+                return browser;
+            })
 
     };
+
+    igv.removeBrowser = function (browser) {
+
+        browser.parent.removeChild(browser.$root.get(0));   // Mix of es6 && jquery, migrating to es6
+
+        allBrowsers = allBrowsers.filter(item => item !== browser);
+
+    }
 
     function doPromiseChain(browser, config) {
 
@@ -122,27 +119,38 @@ var igv = (function (igv) {
             .then(function (ignore) {
 
                 if (false === config.showTrackLabels) {
-                    browser.hideTrackLabels();
-                } else {
-                    browser.showTrackLabels();
-                    if (browser.trackLabelControl) {
-                        browser.trackLabelControl.setState(self.trackLabelsVisible);
-                    }
 
+                    browser.hideTrackLabels();
+
+                } else {
+
+                    browser.showTrackLabels();
+
+                    if (browser.trackLabelControl) {
+                        browser.trackLabelControl.setState(browser.trackLabelsVisible);
+                    }
                 }
 
                 if (false === config.showCursorTrackingGuide) {
+
                     browser.hideCursorGuide();
+
                 } else {
+
                     browser.showCursorGuide();
-                    browser.cursorGuide.setState(self.cursorGuideVisible);
+                    browser.cursorGuide.setState(browser.cursorGuideVisible);
+
                 }
 
                 if (false === config.showCenterGuide) {
+
                     browser.hideCenterGuide();
+
                 } else {
+
                     browser.showCenterGuide();
-                    browser.centerGuide.setState(self.centerGuideVisible);
+                    browser.centerGuide.setState(browser.centerGuideVisible);
+
                 }
 
                 // multi-locus mode
@@ -164,6 +172,17 @@ var igv = (function (igv) {
     }
 
 
+    /**
+     * This function provided so clients can inform igv of a visibility change, typically when an igv instance is
+     * made visible from a tab, accordion, or similar widget.   There are no events to catch for this case,
+     * igv has to be told.
+     */
+    igv.visibilityChange = function () {
+        allBrowsers.forEach(function (browser) {
+            browser.visibilityChange();
+        })
+    }
+
     //@deprecated -- user setGoogleApiKey
     igv.setApiKey = function (key) {
         igv.oauth.google.apiKey = key;
@@ -182,6 +201,10 @@ var igv = (function (igv) {
         igv.oauth.google.access_token = token;
     }
 
+    igv.getGoogleOauthToken = function () {
+        return igv.oauth.google.access_token;
+    }
+
     function setTrackOrder(conf) {
 
         var trackOrder = 1;
@@ -192,51 +215,6 @@ var igv = (function (igv) {
                     track.order = trackOrder++;
                 }
             });
-        }
-
-    }
-
-    function setReferenceConfiguration(conf) {
-
-        var genomeID;
-
-        if (conf.genome) {
-            genomeID = conf.genome;
-            conf.reference = expandGenome(conf.genome);
-        }
-        else if (conf.reference && conf.reference.id !== undefined && conf.reference.fastaURL === undefined) {
-            genomeID = conf.reference.id;
-            conf.reference = expandGenome(conf.reference.id);
-        }
-
-
-        if (genomeID) {
-            return igv.GenomeUtils.getKnownGenomes()
-                .then(function (knownGenomes) {
-                    conf.reference = knownGenomes[genomeID];
-                    if (!conf.reference)igv.presentAlert("Uknown genome id: " + genomeID, undefined);
-                    return conf;
-                })
-        }
-        else {
-            if (!(conf.reference && conf.reference.fastaURL)) {
-                //alert("Fatal error:  reference must be defined");
-                igv.presentAlert("Fatal error:  reference must be defined", undefined);
-                throw new Error("Fatal error:  reference must be defined");
-            }
-            return Promise.resolve(conf);
-        }
-
-
-        /**
-         * Expands ucsc type genome identifiers to genome object.
-         *
-         * @param genomeId
-         * @returns {{}}
-         */
-        function expandGenome(genomeId) {
-
-
         }
 
     }
@@ -257,11 +235,9 @@ var igv = (function (igv) {
 
     function createStandardControls(browser, config) {
 
-        var fileLoadWidgetConfig,
-            $div,
+        var $div,
             $igv_nav_bar_left_container,
             $igv_nav_bar_right_container,
-            $current_genome,
             $genomic_location,
             $locus_size_group,
             $toggle_button_container,
@@ -270,9 +246,7 @@ var igv = (function (igv) {
             $karyo,
             $navigation,
             $searchContainer,
-            $faSearch,
-            isEmbedded,
-            isHidden;
+            $faSearch;
 
         $controls = $('<div id="igvControlDiv">');
 
@@ -289,31 +263,9 @@ var igv = (function (igv) {
             logoDiv = $('<div id="igv-logo">');
             var logoSvg = logo();
             logoSvg.css("width", "34px");
-            logoSvg.css("height", "16px");
+            logoSvg.css("height", "32px");
             logoDiv.append(logoSvg);
             $igv_nav_bar_left_container.append(logoDiv);
-
-            if (config.fileLoadWidget) {
-
-                isHidden = (undefined === config.fileLoadWidget.hidden) ? true : config.fileLoadWidget.hidden;
-
-                if (false === isHidden) {
-
-                    isEmbedded = (undefined === config.fileLoadWidget.embed) ? false : config.fileLoadWidget.embed;
-
-                    // load local file
-                    fileLoadWidgetConfig =
-                    {
-                        embed: isEmbedded,
-                        $widgetParent: config.fileLoadWidget.$widgetParent || browser.$root,
-                        $buttonParent: isEmbedded ? undefined : $igv_nav_bar_left_container
-                    };
-
-                    browser.trackFileLoad = new igv.FileLoadWidget(fileLoadWidgetConfig);
-
-                }
-
-            }
 
             // current genome
             browser.$current_genome = $('<div>', {id: 'igv-current_genome'});
@@ -326,7 +278,7 @@ var igv = (function (igv) {
 
             // chromosome select widget
             browser.chromosomeSelectWidget = new igv.ChromosomeSelectWidget(browser, $genomic_location);
-            if (true === config.showChromosomeWidget) {
+            if (undefined == config.showChromosomeWidget || true === config.showChromosomeWidget) {
                 browser.chromosomeSelectWidget.$container.show();
             } else {
                 browser.chromosomeSelectWidget.$container.hide();
@@ -345,7 +297,12 @@ var igv = (function (igv) {
             $searchContainer.append(browser.$searchInput);
 
             browser.$searchInput.change(function (e) {
-                browser.search($(this).val());
+
+                browser.search($(this).val())
+
+                    .catch(function (error) {
+                        browser.presentAlert(error);
+                    });
             });
 
             // search icon
@@ -366,7 +323,7 @@ var igv = (function (igv) {
             // browser.$searchResults.hide();
 
             // window size display
-            browser.windowSizePanel = new igv.WindowSizePanel($locus_size_group);
+            browser.windowSizePanel = new igv.WindowSizePanel($locus_size_group, browser);
 
 
             // cursor guide | center guide | track labels
@@ -378,14 +335,14 @@ var igv = (function (igv) {
             $igv_nav_bar_right_container.append($toggle_button_container);
 
             // cursor guide
-            browser.cursorGuide = new igv.CursorGuide($(browser.trackContainerDiv), $toggle_button_container, config);
+            browser.cursorGuide = new igv.CursorGuide($(browser.trackContainerDiv), $toggle_button_container, config, browser);
 
             // center guide
-            browser.centerGuide = new igv.CenterGuide($(browser.trackContainerDiv), $toggle_button_container, config);
+            browser.centerGuide = new igv.CenterGuide($(browser.trackContainerDiv), $toggle_button_container, config, browser);
 
             // toggle track labels
             if (true === config.showTrackLabelButton) {
-                browser.trackLabelControl = new igv.TrackLabelControl($toggle_button_container);
+                browser.trackLabelControl = new igv.TrackLabelControl($toggle_button_container, browser);
             }
 
             // zoom widget
@@ -435,6 +392,10 @@ var igv = (function (igv) {
     }
 
     function setDefaults(config) {
+
+        if (undefined === config.visibilityWindow) {
+            config.visibilityWindow = -1;
+        }
 
         if (undefined === config.promisified) {
             config.promisified = false;
@@ -510,10 +471,10 @@ var igv = (function (igv) {
 
     }
 
-    igv.removeBrowser = function () {
-        igv.browser.$root.remove();
-        igv.browser.dispose();
-        $(".igv-generic-dialog-container").remove();
+    igv.removeBrowser = function (browser) {
+        browser.$root.remove();
+        browser.dispose();
+        //$(".igv-generic-dialog-container").remove();   // TODO -- this is global, needs to be specific for this browser
     };
 
 
@@ -552,9 +513,8 @@ var igv = (function (igv) {
                     else {
                         config[key] = value;
                     }
+                    i = j + 1;
                 }
-
-                i = j + 1;
             }
         }
         return query;
