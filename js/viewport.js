@@ -8,7 +8,9 @@ var igv = (function (igv) {
 
     "use strict";
 
-    var NOT_LOADED_MESSAGE = 'Error loading track data';
+    const NOT_LOADED_MESSAGE = 'Error loading track data';
+    const MAX_PIXEL_HEIGHT = 32000;
+    const MAX_PIXEL_COUNT = 200000000;
 
     igv.Viewport = function (trackView, $container, genomicState, width) {
 
@@ -36,23 +38,18 @@ var igv = (function (igv) {
 
         this.setWidth(width);
 
+        if ("sequence" === trackView.track.type) {
 
-        if (trackView.track instanceof igv.SequenceTrack) {
             this.$viewport.addClass('igv-viewport-sequence');
         }
 
-        if (trackView.track instanceof igv.RulerTrack) {
+        if ('ruler' === trackView.track.type) {
 
-            this.$wholeGenomeContainer = $('<div>', {class: 'igv-whole-genome-container'});
-            $(this.contentDiv).append(this.$wholeGenomeContainer);
-
-            const rulerSweeper = new igv.RulerSweeper(this);
-            trackView.track.rulerSweepers.push(rulerSweeper);
-            rulerSweeper.layoutWholeGenome();
+            this.rulerSweeper = new igv.RulerSweeper(this);
 
             trackView.track.appendMultiPanelCloseButton(this.$viewport, this.genomicState);
 
-            this.$rulerLabel = $('<div class = "igv-viewport-content-ruler-div">');
+            this.$rulerLabel = $('<div class = "igv-multi-locus-panel-label-div">');
 
             this.$rulerLabel.click(function (e) {
                 self.browser.selectMultiLocusPanelWithGenomicState(self.genomicState);
@@ -60,31 +57,32 @@ var igv = (function (igv) {
 
             $(this.contentDiv).append(this.$rulerLabel);
 
+            if (true === igv.isWholeGenomeView(this.genomicState.referenceFrame)) {
+                enableRulerTrackMouseHandlers.call(this);
+            } else {
+                disableRulerTrackMouseHandlers.call(this);
+            }
 
         } else {
             addMouseHandlers.call(this);
 
-            const dimen = Math.min(32, this.$viewport.height());
-            const $spinnerContainer = $('<div class="igv-viewport-spinner">');
-            $spinnerContainer.css({'font-size': dimen + 'px'});
+            // const $spinnerContainer = $('<div class="igv-viewport-spinner">');
+            // const dimen = 32;
+            // $spinnerContainer.css({'font-size': dimen + 'px'});
 
-            this.$spinner = igv.createIcon("spinner");
-            $spinnerContainer.append(this.$spinner);
-            this.$viewport.append($spinnerContainer);
+            this.$spinner = $('<div class="igv-viewport-spinner">');
+            this.$spinner.append(igv.createIcon("spinner"));
+
+            this.$viewport.append(this.$spinner);
             this.stopSpinner();
-            this.popover = new igv.Popover(self.browser.$content);
 
+            if ("sequence" !== trackView.track.type) {
+                this.popover = new igv.Popover(self.browser.$content);
+                self.$zoomInNotice = createZoomInNotice.call(this, $(this.contentDiv));
+            }
         }
 
-        if (trackView.track instanceof igv.SequenceTrack) {
-            // do nuthin
-        } else if (trackView.track instanceof igv.RulerTrack) {
-            // do nuthin
-        } else {
-            self.$zoomInNotice = createZoomInNotice.call(this, $(this.contentDiv));
-        }
-
-        if (trackView.track.name && 0 === self.browser.genomicStateList.indexOf(this.genomicState)) {
+        if (trackView.track.name) {
 
             this.$trackLabel = $('<div class="igv-track-label">');
             this.$viewport.append(this.$trackLabel);
@@ -105,7 +103,10 @@ var igv = (function (igv) {
                 } else {
                     str = trackView.track.name;
                 }
-                self.popover.presentContent(e.pageX, e.pageY, str);
+
+                const page = igv.pageCoordinates(e);
+
+                self.popover.presentTrackContent(page.x, page.y, str);
 
             });
             this.$trackLabel.mousedown(function (e) {
@@ -140,17 +141,18 @@ var igv = (function (igv) {
         return $notice;
     }
 
+    igv.Viewport.prototype.isVisible = function () {
+        return this.$viewport.width()
+    }
+
     igv.Viewport.prototype.setWidth = function (width) {
         this.$viewport.outerWidth(width);
         this.canvas.style.width = (this.$viewport.width() + 'px');
         this.canvas.setAttribute('width', this.$viewport.width());
     };
 
-    //.fa5-spin {
-    //    -webkit-animation: fa5-spin 2s infinite linear;
-    //    animation: fa5-spin 2s infinite linear; }
-
     igv.Viewport.prototype.startSpinner = function () {
+
         const $spinner = this.$spinner;
         if ($spinner) {
             $spinner.addClass("fa5-spin");
@@ -159,6 +161,7 @@ var igv = (function (igv) {
     };
 
     igv.Viewport.prototype.stopSpinner = function () {
+
         const $spinner = this.$spinner;
         if ($spinner) {
             $spinner.hide();
@@ -168,18 +171,18 @@ var igv = (function (igv) {
 
     igv.Viewport.prototype.showMessage = function (message) {
         if (!this.messageDiv) {
-            this.messageDiv = document.createElement('div')
-            this.messageDiv.className = 'igv-viewport-message'
+            this.messageDiv = document.createElement('div');
+            this.messageDiv.className = 'igv-viewport-message';
             this.contentDiv.append(this.messageDiv)
         }
-        this.messageDiv.textContent = message
+        this.messageDiv.textContent = message;
         this.messageDiv.style.display = 'inline-block'
-    }
+    };
 
     igv.Viewport.prototype.hideMessage = function (message) {
         if (this.messageDiv)
             this.messageDiv.style.display = 'none'
-    }
+    };
 
 
     igv.Viewport.prototype.checkZoomIn = function () {
@@ -203,6 +206,22 @@ var igv = (function (igv) {
         }
 
         return true;
+
+
+        function showZoomInNotice() {
+
+            const referenceFrame = this.genomicState.referenceFrame;
+
+            if (referenceFrame.chrName.toLowerCase() === "all" && !this.trackView.track.supportsWholeGenome()) {
+                return true;
+            }
+            else {
+                return (
+                    this.trackView.track.visibilityWindow !== undefined &&
+                    this.trackView.track.visibilityWindow > 0 &&
+                    (referenceFrame.bpPerPixel * this.$viewport.width() > this.trackView.track.visibilityWindow));
+            }
+        }
     }
 
     igv.Viewport.prototype.shift = function () {
@@ -264,14 +283,18 @@ var igv = (function (igv) {
             })
     }
 
+
     /**
      *
-     * @param force
+     * @param tile - the tile is created whenever features are loaded.  It contains the genomic state
+     * representing the features,as well as the features.  The object evolved, at one time it was an image tile.
+     * Should be renamed.
      */
     igv.Viewport.prototype.repaint = function (tile) {
 
         var self = this;
 
+        //
         if (!tile) {
             tile = this.tile;
         }
@@ -279,16 +302,66 @@ var igv = (function (igv) {
             return;
         }
 
-        const genomicState = this.genomicState;
-        const referenceFrame = this.genomicState.referenceFrame;
-        const bpStart = tile.startBP;
-        const bpEnd = tile.endBP;
-        const bpPerPixel = tile.bpPerPixel;
+        const isWGV = igv.isWholeGenomeView(this.genomicState.referenceFrame);
+
         const features = tile.features;
 
-        const pixelWidth = Math.ceil((bpEnd - bpStart) / bpPerPixel);
-        const pixelHeight = self.getContentHeight();
-        const devicePixelRatio = window.devicePixelRatio;
+        const genomicState = this.genomicState;
+        const referenceFrame = genomicState.referenceFrame;
+
+        const bpPerPixel = isWGV ? referenceFrame.initialEnd / this.$viewport.width() : tile.bpPerPixel;
+        const bpStart = isWGV ? 0 : tile.startBP;
+        const bpEnd = isWGV ? referenceFrame.initialEnd : tile.endBP;
+        const pixelWidth = isWGV ? this.$viewport.width() : Math.ceil((bpEnd - bpStart) / bpPerPixel);
+
+        let pixelHeight = self.getContentHeight();
+        if (0 === pixelWidth || 0 === pixelHeight) {
+            if (self.canvas) {
+                $(self.canvas).remove();
+            }
+            return;
+        }
+
+        // Always use high DPI if in compressed display mode, otherwise use preference setting;
+        let devicePixelRatio;
+        if ("FILL" === this.trackView.track.displayMode) {
+            devicePixelRatio = window.devicePixelRatio;
+        } else {
+            devicePixelRatio = (this.trackView.track.supportHiDPI === false) ? 1 : window.devicePixelRatio;
+        }
+
+        // Set limits on canvas size.  See https://github.com/igvteam/igv.js/issues/792
+        const origPixelHeight = pixelHeight;
+        pixelHeight = Math.min(Math.floor(MAX_PIXEL_COUNT / (pixelWidth * devicePixelRatio)), pixelHeight);
+        pixelHeight = Math.min(Math.floor(MAX_PIXEL_HEIGHT) / (devicePixelRatio * devicePixelRatio), pixelHeight);
+        if (pixelHeight < origPixelHeight) {
+            console.error("Maximum pixel height exceeded for track " + this.trackView.track.name);
+        }
+
+
+        const drawConfiguration =
+            {
+                features: features,
+
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+
+                bpStart: bpStart,
+                bpEnd: bpEnd,
+                bpPerPixel: bpPerPixel,
+
+                referenceFrame: referenceFrame,
+                genomicState: genomicState,
+
+                selection: self.selection,
+
+                viewport: self,
+                viewportWidth: self.$viewport.width(),
+                viewportContainerX: referenceFrame.toPixels(referenceFrame.start - bpStart),
+                viewportContainerWidth: this.browser.viewportContainerWidth()
+            };
+
+
         const newCanvas = $('<canvas>').get(0);
         newCanvas.style.width = pixelWidth + "px";
         newCanvas.style.height = pixelHeight + "px";
@@ -301,59 +374,11 @@ var igv = (function (igv) {
         newCanvas.style.position = 'absolute';
         newCanvas.style.left = pixelOffset + "px";
         newCanvas.style.top = self.canvas.style.top + "px";
-
-
-        const drawConfiguration =
-        {
-            features: features,
-            context: ctx,
-            pixelWidth: pixelWidth,
-            pixelHeight: pixelHeight,
-            bpStart: bpStart,
-            bpEnd: bpEnd,
-            bpPerPixel: bpPerPixel,
-            referenceFrame: referenceFrame,
-            genomicState: genomicState,
-            selection: self.selection,
-            viewport: self,
-            viewportWidth: self.$viewport.width(),
-            viewportContainerX: referenceFrame.toPixels(referenceFrame.start - bpStart),
-            viewportContainerWidth: this.browser.viewportContainerWidth()
-        };
+        drawConfiguration.context = ctx;
 
         ctx.save();
 
-        if (features) {
-
-            drawConfiguration.features = features;
-
-            self.trackView.track.draw(drawConfiguration);
-
-        }
-
-        if (self.browser.roi) {
-
-            const roiPromises = self.browser.roi.map(function (r) {
-                return r.getFeatures(referenceFrame.chrName, bpStart, bpEnd)
-            });
-
-            const browser = self.browser;
-
-            Promise.all(roiPromises)
-
-                .then(function (roiArray) {
-                    for (var i = 0; i < roiArray.length; i++) {
-                        drawConfiguration.features = roiArray[i];
-                        browser.roi[i].draw(drawConfiguration);
-                    }
-                })
-
-                .catch(function (error) {
-                    console.error(error);
-                    self.loading = false;
-                    browser.presentAlert("ERROR DRAWING REGIONS OF INTEREST", self.$viewport);
-                })
-        }
+        draw.call(this, drawConfiguration, features);
 
         ctx.restore();
 
@@ -365,24 +390,137 @@ var igv = (function (igv) {
         self.ctx = ctx;
         $(self.contentDiv).append(newCanvas);
 
+
     };
 
+    /**
+     *
+     * @param tile - the tile is created whenever features are loaded.  It contains the genomic state
+     * representing the features,as well as the features.  The object evolved, at one time it was an image tile.
+     * Should be renamed.
+     */
+    igv.Viewport.prototype.toSVG = function (tile) {
 
-    function showZoomInNotice() {
+        const genomicState = this.genomicState;
+        const referenceFrame = genomicState.referenceFrame;
+        const bpPerPixel = tile.bpPerPixel;
+        const features = tile.features;
+        const pixelWidth = this.$viewport.width();
+        const pixelHeight = this.$viewport.height();
+        const bpStart = referenceFrame.start;
+        const bpEnd = referenceFrame.start + pixelWidth * referenceFrame.bpPerPixel;
 
-        const referenceFrame = this.genomicState.referenceFrame;
+        const ctx = new C2S(
+            {
+                // svg
+                width: pixelWidth,
+                height: pixelHeight,
+                viewbox:
+                    {
+                        x: 0,
+                        y: -$(this.contentDiv).position().top,
+                        width: pixelWidth,
+                        height: pixelHeight
+                    }
 
-        return (
-            this.trackView.track.visibilityWindow !== undefined &&
-            this.trackView.track.visibilityWindow > 0 &&
-            (referenceFrame.bpPerPixel * this.$viewport.width() > this.trackView.track.visibilityWindow)) ||
-            (referenceFrame.chrName.toLowerCase() === "all" && !this.trackView.track.supportsWholeGenome());
+            });
+
+        const drawConfiguration =
+            {
+                viewport: this,
+                context: ctx,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+                bpStart: bpStart,
+                bpEnd: bpEnd,
+                bpPerPixel: bpPerPixel,
+                referenceFrame: referenceFrame,
+                genomicState: this.genomicState,
+                selection: this.selection,
+                viewportWidth: pixelWidth,
+                viewportContainerX: 0,
+                viewportContainerWidth: this.browser.viewportContainerWidth()
+            };
+
+        draw.call(this, drawConfiguration, features);
+
+        return ctx.getSerializedSvg(true);
+
+    };
+
+    async function draw(drawConfiguration, features) {
+
+        if (features) {
+            drawConfiguration.features = features;
+            this.trackView.track.draw(drawConfiguration);
+        }
+
+        const browser = this.browser;
+
+        const roi = mergeArrays(browser.roi, this.trackView.track.roi)
+
+        if (roi) {
+            for (let r of roi) {
+                const f = await
+                    r.getFeatures(drawConfiguration.referenceFrame.chrName, drawConfiguration.bpStart, drawConfiguration.bpEnd)
+                if (f && f.length > 0) {
+                    drawConfiguration.features = f;
+                    r.draw(drawConfiguration);
+                }
+
+            }
+        }
     }
+
 
     function viewIsReady() {
         return this.browser && this.browser.genomicStateList && this.genomicState.referenceFrame;
     }
 
+    function enableRulerTrackMouseHandlers() {
+
+        const index = this.browser.genomicStateList.indexOf(this.genomicState);
+        const namespace = '.ruler_track_viewport_' + index;
+
+        // console.log(' enable ruler mouse handler ' + index);
+
+        let self = this;
+        this.$viewport.on('click' + namespace, (e) => {
+
+            const pixel = igv.translateMouseCoordinates(e, self.$viewport.get(0)).x;
+            const bp = Math.round(self.genomicState.referenceFrame.start + self.genomicState.referenceFrame.toBP(pixel));
+
+            let searchString;
+
+            if (1 === self.browser.genomicStateList.length) {
+                searchString = self.browser.genome.getChromosomeCoordinate(bp).chr;
+            } else {
+
+                let loci = self.browser.genomicStateList.map((genomicState) => {
+                    return genomicState.locusSearchString;
+                });
+
+                loci[self.browser.genomicStateList.indexOf(self.genomicState)] = self.browser.genome.getChromosomeCoordinate(bp).chr;
+
+                searchString = loci.join(' ');
+            }
+
+            self.browser.search(searchString);
+        });
+
+
+    }
+
+    function disableRulerTrackMouseHandlers() {
+
+
+        const index = this.browser.genomicStateList.indexOf(this.genomicState);
+        const namespace = '.ruler_track_viewport_' + index;
+
+        // console.log('disable ruler mouse handler ' + index);
+
+        this.$viewport.off(namespace);
+    }
 
     igv.Viewport.prototype.setContentHeight = function (contentHeight) {
         // Maximum height of a canvas is ~32,000 pixels on Chrome, possibly smaller on other platforms
@@ -396,6 +534,10 @@ var igv = (function (igv) {
     igv.Viewport.prototype.getContentHeight = function () {
         return $(this.contentDiv).height();
     };
+
+    igv.Viewport.prototype.getContentTop = function () {
+        return this.contentDiv.offsetTop;
+    }
 
     igv.Viewport.prototype.isLoading = function () {
         return this.loading;
@@ -419,14 +561,91 @@ var igv = (function (igv) {
         exportCtx.putImageData(imageData, 0, 0);
 
         // filename = this.trackView.track.name + ".png";
-        const filename = this.$trackLabel.text() + ".png";
+        const filename = (this.$trackLabel.text() ? this.$trackLabel.text() : "image") + ".png";
         const data = exportCanvas.toDataURL("image/png");
-        const a = document.createElement('a');
-        a.href = data;
-        a.download = filename || "image.png";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        igv.download(filename, data);
+    };
+
+    igv.Viewport.prototype.renderSVGContext = function (context, offset) {
+
+        const yScrollDelta = $(this.contentDiv).position().top;
+        const viewportBBox = this.$viewport.get(0).getBoundingClientRect();
+
+
+        let str = this.trackView.track.name || this.trackView.track.id;
+        str = str.replace(/\W/g, '');
+
+        const index = this.browser.genomicStateList.indexOf(this.genomicState);
+        const id = str.toLowerCase() + '_genomic_index_' + index;
+
+        // If present, paint axis canvas. Only in first multi-locus panel.
+        if (0 === index && typeof this.trackView.track.paintAxis === 'function') {
+
+            const w = $(this.trackView.controlCanvas).width();
+            const h = $(this.trackView.controlCanvas).height();
+
+            context.addTrackGroupWithTranslationAndClipRect((id + '_axis'), offset.deltaX - w, offset.deltaY, w, h, 0);
+
+            context.save();
+            this.trackView.track.paintAxis(context, w, h);
+            context.restore();
+        }
+
+        const dx = offset.deltaX + (index * context.multiLocusGap);
+        const dy = offset.deltaY + yScrollDelta;
+
+        context.addTrackGroupWithTranslationAndClipRect(id, dx, dy, viewportBBox.width, viewportBBox.height, -yScrollDelta);
+
+        const width = this.$viewport.width();
+        const height = this.$viewport.height();
+
+        let referenceFrame = this.genomicState.referenceFrame;
+
+        context.save();
+
+        const drawConfig =
+            {
+                context: context,
+
+                viewport: this,
+
+                referenceFrame: referenceFrame,
+
+                genomicState: this.genomicState,
+
+                pixelWidth: width,
+                pixelHeight: height,
+
+                viewportWidth: width,
+
+                viewportContainerX: 0,
+                viewportContainerWidth: this.browser.viewportContainerWidth(),
+
+                bpStart: referenceFrame.start,
+                bpEnd: referenceFrame.start + width * referenceFrame.bpPerPixel,
+
+                bpPerPixel: referenceFrame.bpPerPixel,
+
+                selection: this.selection
+            };
+
+        const features = this.tile ? this.tile.features : [];
+
+        draw.call(this, drawConfig, features);
+
+        context.restore();
+
+
+    };
+
+    igv.Viewport.prototype.saveSVG = function () {
+        const str = this.$trackLabel ? this.$trackLabel.text() : this.trackView.track.id;
+        const filename = str + ".svg";
+        const svg = this.toSVG(this.tile);
+        const data = URL.createObjectURL(new Blob([svg], {
+            type: "application/octet-stream"
+        }));
+        igv.download(filename, data);
     };
 
     /**
@@ -478,20 +697,26 @@ var igv = (function (igv) {
         const browser = this.browser;
 
         let lastMouseX;
-        let mouseDownX;
+        let mouseDownCoords;
+
         let popupTimerID;
 
         let lastClickTime = 0;
 
         this.$viewport.on("contextmenu", function (e) {
 
-            e.preventDefault();
-
+            // Ignore if we are doing a drag.  This can happen with touch events.
+            if (self.browser.isDragging) {
+                return false;
+            }
             const clickState = createClickState(e, self);
 
             if (undefined === clickState) {
-                return
+                return false;
             }
+
+
+            e.preventDefault();
 
             // Track specific items
             let menuItems = [];
@@ -505,9 +730,17 @@ var igv = (function (igv) {
             }
             menuItems.push(
                 {
-                    label: 'Save Image',
+                    label: 'Save Image (PNG)',
                     click: function () {
                         self.saveImage();
+                    }
+                });
+
+            menuItems.push(
+                {
+                    label: 'Save Image (SVG)',
+                    click: function () {
+                        self.saveSVG();
                     }
                 });
 
@@ -520,25 +753,80 @@ var igv = (function (igv) {
          * Mouse click down,  notify browser for potential drag (pan), and record position for potential click.
          */
         this.$viewport.on('mousedown', function (e) {
-            mouseDownX = igv.translateMouseCoordinates(e, self.$viewport.get(0)).x;
+            self.enableClick = true;
             browser.mouseDownOnViewport(e, self);
-
+            mouseDownCoords = igv.pageCoordinates(e);
         });
 
+        this.$viewport.on('touchstart', function (e) {
+            self.enableClick = true;
+            browser.mouseDownOnViewport(e, self);
+            mouseDownCoords = igv.pageCoordinates(e);
+        });
 
         /**
          * Mouse is released.  Ignore if this is a context menu click, or the end of a drag action.   If neither of
          * those, it is a click.
          */
-        this.$viewport.on('mouseup', function (e) {
+        this.$viewport.on('mouseup', handleMouseUp);
+
+        this.$viewport.on('touchend', handleMouseUp);
+
+        this.$viewport.on('click', function (e) {
+            if (self.enableClick) {
+                handleClick(e);
+            }
+        });
+
+        function handleMouseUp(e) {
 
 
-            if (3 === e.which || e.ctrlKey || self.isDragging || mouseDownX === undefined) {
+            // Any mouse up cancels drag and scrolling
+            if (self.browser.isDragging || self.browser.isScrolling) {
+                self.browser.cancelTrackPan();
+                e.preventDefault();
+                e.stopPropagation();
+
+                self.enableClick = false;   // Until next mouse down
+
                 return;
             }
 
-            // This is a mouse click.  Handle it here, stop bubbling.
+            self.browser.cancelTrackPan();
+            self.browser.endTrackDrag();
+        }
+
+        function handleClick(e) {
+
+            if (3 === e.which || e.ctrlKey) {
+                return;
+            }
+
+            // Close any currently open popups
+            $('.igv-popover').hide();
+
+
+            if (browser.isDragging || browser.isScrolling) {
+                return;
+            }
+
+            // // Interpret mouseDown + mouseUp < 5 pixels as a click.
+            // if(!mouseDownCoords) {
+            //     return;
+            // }
+            // const coords = igv.pageCoordinates(e);
+            // const dx = coords.x - mouseDownCoords.x;
+            // const dy = coords.y - mouseDownCoords.y;
+            // const dist2 = dx*dx + dy*dy;
+            // if(dist2 > 25) {
+            //     mouseDownCoords = undefined;
+            //     return;
+            // }
+
+            // Treat as a mouse click, its either a single or double click.
+            // Handle here and stop propogation / default
             e.preventDefault();
+            e.stopPropagation();
 
             const mouseX = igv.translateMouseCoordinates(e, self.$viewport.get(0)).x;
             const mouseXCanvas = igv.translateMouseCoordinates(e, self.canvas).x;
@@ -576,7 +864,7 @@ var igv = (function (igv) {
                     browser.search(string);
 
                 } else {
-                    browser.zoomInWithViewport(self, centerBP);
+                    browser.zoomWithScaleFactor(0.5, centerBP, self)
                 }
 
 
@@ -593,7 +881,8 @@ var igv = (function (igv) {
 
                             var content = getPopupContent(e, self);
                             if (content) {
-                                self.popover.presentTrackPopup(e, content);
+                                const page = igv.pageCoordinates(e);
+                                self.popover.presentTrackContent(page.x, page.y, content);
                             }
                             clearTimeout(popupTimerID);
                             popupTimerID = undefined;
@@ -602,22 +891,14 @@ var igv = (function (igv) {
                 }
             }
 
-            mouseDownX = lastMouseX = undefined;
             lastClickTime = time;
-        });
-
-        /**
-         * Mouse has moved out of the viewport.  Cancel pending click.
-         */
-        this.$viewport.on('mouseout', function (e) {
-            mouseDownX = lastMouseX = lastClickTime = undefined;
-        });
-
+        }
 
         function createClickState(e, viewport) {
 
             const referenceFrame = viewport.genomicState.referenceFrame;
-            const viewportCoords = igv.translateMouseCoordinates(e, viewport.$viewport);
+            const viewportCoords = igv.translateMouseCoordinates(e, viewport.contentDiv);
+            const canvasCoords = igv.translateMouseCoordinates(e, viewport.canvas);
             const genomicLocation = ((referenceFrame.start) + referenceFrame.toBP(viewportCoords.x));
 
             if (undefined === genomicLocation || null === viewport.tile) {
@@ -629,7 +910,9 @@ var igv = (function (igv) {
                 referenceFrame: referenceFrame,
                 genomicLocation: genomicLocation,
                 x: viewportCoords.x,
-                y: viewportCoords.y
+                y: viewportCoords.y,
+                canvasX: canvasCoords.x,
+                canvasY: canvasCoords.y
             }
 
         }
@@ -694,17 +977,16 @@ var igv = (function (igv) {
 
     function getFeatures(chr, start, end, bpPerPixel) {
 
-        var self = this,
-            track;
+        const self = this;
 
-        track = self.trackView.track;
+        const track = self.trackView.track;
 
         if (self.tile && self.tile.containsRange(chr, start, end, bpPerPixel)) {
             return Promise.resolve(self.tile.features);
         }
         else if (typeof track.getFeatures === "function") {
 
-            return track.getFeatures(chr, start, end, bpPerPixel)
+            return track.getFeatures(chr, start, end, bpPerPixel, self)
 
                 .then(function (features) {
 
@@ -725,7 +1007,12 @@ var igv = (function (igv) {
 
         let track = this.trackView.track;
 
-        if (typeof track.computePixelHeight === 'function') {
+        if ("FILL" === track.displayMode) {
+            this.setContentHeight(this.$viewport.height())
+        }
+
+        else if (typeof track.computePixelHeight === 'function') {
+
             let features = this.cachedFeatures;
 
             if (features) {
@@ -736,6 +1023,18 @@ var igv = (function (igv) {
                 }
             }
         }
+    }
+
+    /**
+     * Merge 2 arrays.  a and/or b can be undefined.  If both are undefined, return undefined
+     * @param a An array or undefined
+     * @param b An array or undefined
+     */
+    function mergeArrays(a, b) {
+        if(a && b) return a.concat(b)
+        else if(a) return a
+        else return b
+
     }
 
     return igv;

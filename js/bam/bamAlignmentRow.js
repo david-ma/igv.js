@@ -34,7 +34,7 @@ var igv = (function (igv) {
         this.score = undefined;
     };
 
-    igv.BamAlignmentRow.prototype.findCenterAlignment = function (genomicLocation) {
+    igv.BamAlignmentRow.prototype.findAlignment = function (genomicLocation) {
 
         var centerAlignment, a, i;
 
@@ -59,7 +59,7 @@ var igv = (function (igv) {
         return centerAlignment;
 
         function alignmentContains(a, genomicLocation) {
-            return genomicLocation >= a.start && genomicLocation <= a.start + a.lengthOnRef
+            return genomicLocation >= a.start && genomicLocation < a.start + a.lengthOnRef
         }
     }
 
@@ -71,26 +71,29 @@ var igv = (function (igv) {
 
     igv.BamAlignmentRow.prototype.calculateScore = function (genomicLocation, interval, sortOption, sortDirection) {
 
-        var readBase,
-            alignment,
-            block;
+        const alignment = this.findAlignment(genomicLocation);
 
-
-        alignment = this.findCenterAlignment(genomicLocation);
         if (undefined === alignment) {
             return sortDirection ? Number.MAX_VALUE : -Number.MAX_VALUE;
         }
 
-        if ("NUCLEOTIDE" === sortOption.sort) {
+        if ("NUCLEOTIDE" === sortOption) {
 
-            readBase = alignment.readBaseAt(genomicLocation);
-            return  calculateBaseScore(readBase, interval, genomicLocation);
+            const readBase = alignment.readBaseAt(genomicLocation);
+            const quality = alignment.readBaseQualityAt(genomicLocation);
 
-        } else if ("STRAND" === sortOption.sort) {
+            if (!readBase) {
+                return sortDirection ? Number.MAX_VALUE : -Number.MAX_VALUE;
+            }
+            else {
+                return calculateBaseScore(readBase, quality, interval, genomicLocation);
+            }
+
+        } else if ("STRAND" === sortOption) {
 
             return alignment.strand ? 1 : -1;
 
-        } else if ("START" === sortOption.sort) {
+        } else if ("START" === sortOption) {
 
             return alignment.start;
         }
@@ -98,8 +101,7 @@ var igv = (function (igv) {
         return Number.MAX_VALUE;
 
 
-
-        function calculateBaseScore(base, interval, genomicLocation)  {
+        function calculateBaseScore(base, quality, interval, genomicLocation) {
             var idx,
                 reference,
                 coverage,
@@ -107,27 +109,35 @@ var igv = (function (igv) {
                 phred;
 
 
-
             idx = Math.floor(genomicLocation) - interval.start;
-            if(idx < interval.sequence.length) {
+            if (idx < interval.sequence.length) {
                 reference = interval.sequence.charAt(idx);
             }
-            if(!reference) return undefined;
+            if (!reference) {
+                return undefined;
+            }
 
+            if (undefined === base) {
+                return Number.MAX_VALUE;
+            }
             if ('N' === base) {
                 return 2;
+
             } else if (reference === base || '=' === base) {
-                return 3;
+                return 4 - quality / 1000;
+
             } else if ("X" === base || reference !== base) {
 
                 idx = Math.floor(genomicLocation) - interval.coverageMap.bpStart;
-                if(idx > 0 && idx < interval.coverageMap.coverage.length) {
+
+                if (idx > 0 && idx < interval.coverageMap.coverage.length) {
+
                     coverage = interval.coverageMap.coverage[idx];
                     count = coverage["pos" + base] + coverage["neg" + base];
-                    phred = (coverage.qual) ? coverage.qual : 0;
-                    return -(count + (phred / 1000.0));
+
+                    return -(count + (quality / 1000));
                 } else {
-                    return -1;
+                    return -(1 + quality / 1000);
                 }
             }
 

@@ -103,6 +103,11 @@ var igv = (function (igv) {
                     this.decode = decodeGenePredExt;
                     this.delimiter = /\s+/;
                     break;
+                case "ensgene":
+                    this.decode = decodeGenePred
+                    this.shift = 1;
+                    this.delimiter = /\s+/;
+                    break;
                 case "refgene":
                     this.decode = decodeGenePredExt;
                     this.delimiter = /\s+/;
@@ -132,9 +137,17 @@ var igv = (function (igv) {
                     this.skipRows = 1;
                     this.header = {colorColumn: 7};
                     break;
+                case "snp":
+                    this.decode = decodeSNP;
+                    this.delimiter = "\t";
+                    break;
+                case "rmsk":
+                    this.decode = decodeRepeatMasker;
+                    this.delimiter = "\t";
+                    break;
                 default:
 
-                    customFormat = igv.getFormat(format);
+                    customFormat = igv.getFormat(this.format);
                     if (customFormat !== undefined) {
                         this.decode = decodeCustom;
                         this.format = customFormat;
@@ -149,7 +162,6 @@ var igv = (function (igv) {
         }
 
     };
-
 
     igv.FeatureParser.prototype.parseHeader = function (data) {
 
@@ -214,7 +226,7 @@ var igv = (function (igv) {
         // Double quoted strings can contain newlines in AED
         // "" is an escape for a ".
         // Parse all this, clean it up, split into tokens in a custom way
-        function readTokensAed () {
+        function readTokensAed() {
             var tokens = [],
                 token = "",
                 quotedString = false,
@@ -512,19 +524,20 @@ var igv = (function (igv) {
 
         if (tokens.length > 3) {
             // Note: these are very special rules for the gencode gene files.
-            tmp = tokens[3].replace(/"/g, '');
-            idName = tmp.split(';');
-            for (var i = 0; i < idName.length; i++) {
-                var kv = idName[i].split('=');
-                if (kv[0] == "gene_id") {
-                    id = kv[1];
-                }
-                if (kv[0] == "gene_name") {
-                    name = kv[1];
-                }
-            }
-            feature.id = id ? id : tmp;
-            feature.name = name ? name : tmp;
+            // tmp = tokens[3].replace(/"/g, '');
+            // idName = tmp.split(';');
+            // for (var i = 0; i < idName.length; i++) {
+            //     var kv = idName[i].split('=');
+            //     if (kv[0] == "gene_id") {
+            //         id = kv[1];
+            //     }
+            //     if (kv[0] == "gene_name") {
+            //         name = kv[1];
+            //     }
+            // }
+            // feature.id = id ? id : tmp;
+            // feature.name = name ? name : tmp;
+            feature.name = name;
         }
 
         if (tokens.length > 4) {
@@ -554,7 +567,7 @@ var igv = (function (igv) {
                 eEnd = eStart + parseInt(exonSizes[i]);
                 var exon = {start: eStart, end: eEnd};
 
-                if (feature.cdStart > eEnd || feature.cdEnd < feature.cdStart) exon.utr = true;   // Entire exon is UTR
+                if (feature.cdStart > eEnd || feature.cdEnd < eStart) exon.utr = true;   // Entire exon is UTR
                 if (feature.cdStart >= eStart && feature.cdStart <= eEnd) exon.cdStart = feature.cdStart;
                 if (feature.cdEnd >= eStart && feature.cdEnd <= eEnd) exon.cdEnd = feature.cdEnd;
 
@@ -575,6 +588,55 @@ var igv = (function (igv) {
                 feature.thickness = tokens[thicknessColumn];
             }
         }
+
+        return feature;
+
+    }
+
+    /**
+     * Decode a UCSC repeat masker record.
+     *
+     * Columns, from UCSC documentation
+     *
+     * 0  bin    585    smallint(5) unsigned    Indexing field to speed chromosome range queries.
+     * 1  swScore    1504    int(10) unsigned    Smith Waterman alignment score
+     * 2  milliDiv    13    int(10) unsigned    Base mismatches in parts per thousand
+     * 3  milliDel    4    int(10) unsigned    Bases deleted in parts per thousand
+     * 4  milliIns    13    int(10) unsigned    Bases inserted in parts per thousand
+     * 5  genoName    chr1    varchar(255)    Genomic sequence name
+     * 6  genoStart    10000    int(10) unsigned    Start in genomic sequence
+     * 7  genoEnd    10468    int(10) unsigned    End in genomic sequence
+     * 8  genoLeft    -249240153    int(11)    -#bases after match in genomic sequence
+     * 9  strand    +    char(1)    Relative orientation + or -
+     * 10 repName    (CCCTAA)n    varchar(255)    Name of repeat
+     * 11 repClass    Simple_repeat    varchar(255)    Class of repeat
+     * 12 repFamily    Simple_repeat    varchar(255)    Family of repeat
+     * 13 repStart    1    int(11)    Start (if strand is +) or -#bases after match (if strand is -) in repeat sequence
+     * 14 repEnd    463    int(11)    End in repeat sequence
+     * 15 repLeft    0    int(11)    -#bases after match (if strand is +) or start (if strand is -) in repeat sequence
+     * 16 id    1    char(1)    First digit of id field in RepeatMasker .out file. Best ignored.
+     */
+    function decodeRepeatMasker(tokens, ignore) {
+
+        if (tokens.length < 15) return undefined;
+
+        const feature = {
+            swScore: Number.parseInt(tokens[1]),
+            milliDiv: Number.parseInt(tokens[2]),
+            milliDel: Number.parseInt(tokens[3]),
+            milliIns: Number.parseInt(tokens[4]),
+            chr: tokens[5],
+            start: Number.parseInt(tokens[6]),
+            end: Number.parseInt(tokens[7]),
+            //genoLeft: tokens[8],
+            strand: tokens[9],
+            repName: tokens[10],
+            repClass: tokens[11],
+            repFamily: tokens[12],
+            repStart: Number.parseInt(tokens[13]),
+            repEnd: Number.parseInt(tokens[14]),
+            repLeft: Number.parseInt(tokens[15])
+        };
 
         return feature;
 
@@ -1056,7 +1118,7 @@ var igv = (function (igv) {
             // Skip columns that are not interesting - you know the sequence, and you can see color
             if (name !== 'sequence' && name !== 'color') {
                 if (featureValue) {
-                    data.push({ name: name, value: featureValue });
+                    data.push({name: name, value: featureValue});
                 }
             }
         }
@@ -1175,6 +1237,62 @@ var igv = (function (igv) {
         return feature;
     }
 
+
+    /**
+     * Decode UCSC "interact" files.  See https://genome.ucsc.edu/goldenpath/help/interact.html
+     * @param tokens
+     * @param ignore
+     * @returns {*}
+     */
+    function decodeInteract(tokens, ignore) {
+
+        if (tokens.length < 6) {
+            console.log("Skipping line: " + nextLine);
+            return undefined;
+        }
+
+        var feature = {
+            chr1: tokens[8],
+            start1: Number.parseInt(tokens[9]),
+            end1: Number.parseInt(tokens[10]),
+            chr2: tokens[13],
+            start2: Number.parseInt(tokens[14]),
+            end2: Number.parseInt(tokens[15]),
+
+            name: tokens[3],
+            score: Number.parseFloat(tokens[4]),
+            value: Number.parseFloat(tokens[5]),
+            color: tokens[6]
+
+        }
+
+        feature.chr = feature.chr1 === feature.chr2 ? feature.chr1 : "MIXED";
+
+        // Start and end for the feature as a whole.  This needs revisited for interchr features
+        feature.start = Math.min(feature.start1, feature.start2);
+        feature.end = Math.max(feature.end1, feature.end2);
+
+        // Midpoints
+        let m1 = (feature.start1 + feature.end1) / 2;
+        let m2 = (feature.start2 + feature.end2) / 2;
+        feature.m1 = (m1 < m2) ? m1 : m2;
+        feature.m2 = (m1 < m2) ? m2 : m1;
+
+        // Optional extra columns
+        if (this.header) {
+            let thicknessColumn = this.header.thicknessColumn;
+            let colorColumn = this.header.colorColumn;
+            if (colorColumn && colorColumn < tokens.length) {
+                feature.color = igv.Color.createColorString(tokens[colorColumn])
+            }
+            if (thicknessColumn && thicknessColumn < tokens.length) {
+                feature.thickness = tokens[thicknessColumn];
+            }
+        }
+
+        return feature;
+    }
+
     /**
      * Special decoder for Hic Domain files.   In these files feature1 == feature2, they are really bed records.
      * @param tokens
@@ -1193,31 +1311,85 @@ var igv = (function (igv) {
     }
 
 
+    function decodeSNP(tokens, ignore) {
+
+        const autoSql = [
+            'bin',
+            'chr',
+            'start',
+            'end',
+            'name',
+            'score',
+            'strand',
+            'refNCBI',
+            'refUCSC',
+            'observed',
+            'molType',
+            'class',
+            'valid',
+            'avHet',
+            'avHetSE',
+            'func',
+            'locType',
+            'weight',
+            'exceptions',
+            'submitterCount',
+            'submitters',
+            'alleleFreqCount',
+            'alleles',
+            'alleleNs',
+            'alleleFreqs',
+            'bitfields'
+        ];
+
+        const feature = {
+            chr: tokens[1],
+            start: Number.parseInt(tokens[2]),
+            end: Number.parseInt(tokens[3]),
+            name: tokens[4],
+            score: Number.parseInt(tokens[5])
+        };
+
+        const n = Math.min(tokens.length, autoSql.length);
+        for (let i = 6; i < n; i++) {
+            feature[autoSql[i]] = tokens[i];
+        }
+        return feature;
+
+    }
+
 
     /**
-     * Decode the "standard" UCSC bed format
+     * Decode a custom columnar format.  Required columns are 'chr' and 'start'
+     *
      * @param tokens
      * @param ignore
      * @returns decoded feature, or null if this is not a valid record
      */
     function decodeCustom(tokens, ignore) {
 
-        var feature,
-            chr, start, end,
-            format = this.format,         // "this" refers to FeatureParser instance
-            coords = format.coords || 0;
+        const format = this.format;         // "this" refers to FeatureParser instance
+        const coords = format.coords || 0;
 
-        if (tokens.length < 3) return null;
+        // Insure that chr and start fields are defined.
+        //if(!this.format.chr && this.format.start) {
+        //}
 
-        chr = tokens[format.chr];
-        start = parseInt(tokens[format.start]) - coords;
-        end = format.end !== undefined ? parseInt(tokens[format.end]) : start + 1;
 
-        feature = {chr: chr, start: start, end: end};
+        const chr = tokens[format.chr];
+        const start = parseInt(tokens[format.start]) - coords;
+        const end = format.end !== undefined ? parseInt(tokens[format.end]) : start + 1;
+
+        const feature = {chr: chr, start: start, end: end};
 
         if (format.fields) {
+
             format.fields.forEach(function (field, index) {
-                if (index != format.chr && index != format.start && index != format.end) {
+
+                if (index != format.chr &&
+                    index != format.start &&
+                    index != format.end) {
+
                     feature[field] = tokens[index];
                 }
             });
@@ -1225,6 +1397,23 @@ var igv = (function (igv) {
 
         return feature;
 
+    }
+
+
+    function expandFormat(format) {
+
+        const fields = format.fields;
+        const keys = ['chr', 'start', 'end'];
+
+        for (let i = 0; i < fields.length; i++) {
+            for (let key of keys) {
+                if (key === fields[i]) {
+                    format[key] = i;
+                }
+            }
+        }
+
+        return format;
     }
 
 

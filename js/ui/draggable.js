@@ -33,80 +33,81 @@
  */
 var igv = (function (igv) {
 
+    const namespace = ".igv_drag";
+
     let dragData;   // Its assumed we are only dragging one element at a time.
 
     igv.makeDraggable = function (target, handle) {
 
-        handle.addEventListener('mousedown', dragStart.bind(target), true);
+        $(handle).on('mousedown' + namespace, dragStart.bind(target));
 
-    }
+    };
 
 
     function dragStart(event) {
+
         event.stopPropagation();
         event.preventDefault();
-        const target = this;
-        const x = event.screenX;
-        const y = event.screenY;
-        const styleX = Math.round(parseFloat(target.style.left.replace("px", "")));
-        const styleY = Math.round(parseFloat(target.style.top.replace("px", "")));
 
-        const dragFunction = drag.bind(target);
-        const dragEndFunction = dragEnd.bind(target);
+        const styleX = Math.round(parseFloat(this.style.left.replace("px", "")));
+        const styleY = Math.round(parseFloat(this.style.top.replace("px", "")));
+        const dragFunction = drag.bind(this);
+        const dragEndFunction = dragEnd.bind(this);
+
         dragData =
             {
                 dragFunction: dragFunction,
                 dragEndFunction: dragEndFunction,
-                dx: styleX - x,
-                dy: styleY - y
+                dx: styleX - event.screenX,
+                dy: styleY - event.screenY
             };
 
-        document.addEventListener('mousemove', dragFunction);
-        document.addEventListener('mouseup', dragEndFunction);
-        document.addEventListener('mouseleave', dragEndFunction);
-        document.addEventListener('mouseexit', dragEndFunction);
+        $(document).on('mousemove' + namespace, dragFunction);
+        $(document).on('mouseup' + namespace, dragEndFunction);
+        $(document).on('mouseleave' + namespace, dragEndFunction);
+        $(document).on('mouseexit' + namespace, dragEndFunction);
 
     }
 
     function drag(event) {
 
         if(!dragData) {
-            console.log("No drag data!")
+            console.log("No drag data!");
             return;
         }
 
         event.stopPropagation();
         event.preventDefault();
-        const target = this;
-        const x = event.screenX;
-        const y = event.screenY;
-        const styleX = dragData.dx + x;
-        const styleY = dragData.dy + y;
-        target.style.left = styleX + "px";
-        target.style.top = styleY + "px";
+
+        const styleX = dragData.dx + event.screenX;
+        const styleY = dragData.dy + event.screenY;
+
+        this.style.left = styleX + "px";
+        this.style.top = styleY + "px";
+
+        // console.log('drag ' + 'x ' + styleX + ' y ' + styleY);
     }
 
     function dragEnd(event) {
 
         if(!dragData) {
-            console.log("No drag data!")
+            console.log("No drag data!");
             return;
         }
 
+
         event.stopPropagation();
         event.preventDefault();
-        const target = this;
-        const x = event.screenX;
-        const y = event.screenY;
-        const styleX = dragData.dx + x;
-        const styleY = dragData.dy + y;
-        target.style.left = styleX + "px";
-        target.style.top = styleY + "px";
 
-        document.removeEventListener('mousemove', dragData.dragFunction);
-        document.removeEventListener('mouseup', dragData.dragEndFunction);
-        document.removeEventListener('mouseleave', dragData.dragEndFunction);
-        document.removeEventListener('mouseexit', dragData.dragEndFunction);
+        const styleX = dragData.dx + event.screenX;
+        const styleY = dragData.dy + event.screenY;
+
+        // console.log('drag end ' + 'x ' + styleX + ' y ' + styleY);
+
+        this.style.left = styleX + "px";
+        this.style.top = styleY + "px";
+
+        $(document).off(namespace);
         dragData = undefined;
     }
 

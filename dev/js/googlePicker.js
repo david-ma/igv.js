@@ -7,7 +7,9 @@ function initClient() {
 
     var scope = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/genomics https://www.googleapis.com/auth/devstorage.read_only https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.readonly";
 
-    igv.Google.loadGoogleProperties("https://s3.amazonaws.com/igv.org.app/web_client_google")
+    let browser;
+
+    igv.google.loadGoogleProperties("https://s3.amazonaws.com/igv.org.app/web_client_google")
 
         .then(function (properties) {
 
@@ -23,16 +25,19 @@ function initClient() {
 
         .then(function () {
 
-            var div, options, browser;
+            var div, options;
 
             div = $("#myDiv")[0];
             options = {
                 genome: "hg19",
-                apiKey: igv.Google.properties["api_key"],
+                apiKey: igv.google.properties["api_key"],
                 queryParametersSupported: true
             };
 
-            igv.createBrowser(div, options);
+            igv.createBrowser(div, options)
+                .then(function (b) {
+                    igv.browser = b;
+                })
 
             
         })
@@ -81,11 +86,11 @@ function createPicker() {
 
                 picker = new google.picker
                     .PickerBuilder()
-                    .setAppId(igv.Google.properties["project_number"])
+                    .setAppId(igv.google.properties["project_number"])
                     .setOAuthToken(igv.oauth.google.access_token)
                     .addView(view)
                     .addView(view2)
-                    .setDeveloperKey(igv.Google.properties["developer_key"])
+                    .setDeveloperKey(igv.google.properties["developer_key"])
                     .setCallback(pickerCallback)
                     .enableFeature(google.picker.Feature.SUPPORT_TEAM_DRIVES)
                     .build();
@@ -148,22 +153,22 @@ function createPicker() {
             name = doc[google.picker.Document.NAME];
             id = doc[google.picker.Document.ID];
 
-            format = igv.inferFileFormat(name);
+           /// format = igv.inferFileFormat(name);
 
-            if (!format) {
-                alert("Unrecognized file format: " + name);
-            }
-            else {
+           // if (!format) {
+           //     alert("Unrecognized file format: " + name);
+           // }
+           // else {
 
                 downloadURL = "https://www.googleapis.com/drive/v3/files/" + id + "?alt=media";
 
-                igv.browser.loadTrack({
+                igv.browser.loadSession({
                     url: downloadURL,
                     filename: name,
-                    name: name,
-                    format: format
+                    //name: name,
+                    //format: format
                 })
-            }
+           // }
         }
 
     }

@@ -1,25 +1,85 @@
 [
   {
-    "format": "bed",
-    "name": "Embedded features",
+    "type": "alignment",
+    "name": "HG02450 - Broad",
+    "format": "bam",
+    "url": "https://data.broadinstitute.org/igvdata/1KG/b37/data/HG02450/alignment/HG02450.mapped.ILLUMINA.bwa.ACB.low_coverage.20120522.bam",
+    "indexURL": "https://data.broadinstitute.org/igvdata/1KG/b37/data/HG02450/alignment/HG02450.mapped.ILLUMINA.bwa.ACB.low_coverage.20120522.bam.bai"
+  },
+
+  {
     "type": "annotation",
-    "features": [
-      {
-        "chr": "1",
-        "start": 7432951,
-        "end": 7438000,
-        "name": "feature 1"
-      },
-      {
-        "chr": "1",
-        "start": 8438000,
-        "end": 8440000,
-        "name": "feature 2"
-      }
-    ]
+    "name": "genes - dropbox",
+    "format": "gtf",
+    "url": "https://www.dropbox.com/s/4fk2wk0eulam1j0/genes.gtf.gz?dl=0",
+    "indexURL": "https://www.dropbox.com/s/wtaqm2k7ag87xrj/genes.gtf.gz.tbi?dl=0"
+
   },
   {
-    "HEADING": "Platinum Genomes (BAM)"
+    "type": "annotation",
+    "name": "genes - google drive",
+    "format": "gtf",
+    "filename": "genes.gtf.gz",
+    "url": "https://drive.google.com/open?id=1ANNz7TTL_rBue-mXqwnvcQZEP6JiVBbH&key=AIzaSyDUUAUFpQEN4mumeMNIRWXSiTh5cPtUAD0",
+    "indexURL": "https://drive.google.com/open?id=1TqiSv8uRnaqHpn9E7DJcol8Qy9HPPbAs&key=AIzaSyDUUAUFpQEN4mumeMNIRWXSiTh5cPtUAD0"
+
+  },
+  {
+    "type": "alignment",
+    "name": "Heart SLC25A3 - Dropbox",
+    "url": "https://www.dropbox.com/s/zx7owfskn0jk6ab/heart_slc25a3.cram?dl=0",
+    "indexURL": "https://www.dropbox.com/s/k3r83ckbo0chtm7/heart_slc25a3.crai?dl=0"
+  },
+  {
+    "type": "alignment",
+    "name": "Heart SLC25A3 - Amazon",
+    "format": "cram",
+    "url": "https://s3.amazonaws.com/igv.org.test/data/cram/heart_slc25a3.cram",
+    "indexURL": "https://s3.amazonaws.com/igv.org.test/data/cram/heart_slc25a3.cram.crai"
+  },
+  {
+    "type": "alignment",
+    "name": "Heart SLC25S3 - Google Drive",
+    "format": "cram",
+    "url": "https://drive.google.com/open?id=1b7tAs4GjyRz_Ix6Wjr5AxNQY_NXZd1Mo",
+    "indexURL":"https://drive.google.com/open?id=1FTzrjG9xw4sm0sMDN6wo1B1ljBKVB4D2"
+  },
+  {
+    "type": "alignment",
+    "name": "Heart SLC25A3 - Local",
+    "format": "cram",
+    "url": "../test/data/cram/heart_slc25a3.cram",
+    "indexURL": "../test/data/cram/heart_slc25a3.crai"
+  },
+  {
+    "type": "annotation",
+    "sourceType": "civic-ws",
+    "url": "https://civicdb.org/api",
+    "indexed": false,
+    "queryable": false,
+    "name": "CIViC"
+  },
+  {
+    "HEADING": "GTEx"
+  },
+  {
+    "type": "eqtl",
+    "sourceType": "gtex-ws",
+    "url": "https://gtexportal.org/rest/v1/association/singleTissueEqtlByLocation",
+    "tissueName": "Liver",
+    "name": "Liver - v1 API",
+    "visibilityWindow": 1000000
+  },
+  {
+    "type": "eqtl",
+    "sourceType": "gtex-ws",
+    "url": "https://gtexportal.org/api/b0.9/association/singleTissueEqtlByLocation",
+    "tissueName": "Liver",
+    "name": "Liver - api/b0.9 API",
+    "visibilityWindow": 1000000
+  },
+  {
+    "HEADING": "Platinum Genomes (gs protocol BAM)"
   },
   {
     "sourceType": "gcs",
@@ -99,28 +159,63 @@
     "HEADING": "BED / GTF"
   },
   {
+    "format": "bed",
+    "name": "Embedded features",
+    "type": "annotation",
+    "features": [
+      {
+        "chr": "1",
+        "start": 7432951,
+        "end": 7438000,
+        "name": "feature 1"
+      },
+      {
+        "chr": "1",
+        "start": 8438000,
+        "end": 8440000,
+        "name": "feature 2"
+      }
+    ]
+  },
+  {
+    "url": "../test/data/bed/oneFeature.bed",
+    "indexed": false,
+    "name": "1 feature bed"
+  },
+  {
     "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.gz",
     "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.gz.tbi",
     "name": "Bed - Tabix Index"
   },
   {
-    "type": "bed",
+    "type": "annotation",
+    "format": "bed",
+    "url": "https://s3.amazonaws.com/igv.org.test/data/gencode.v18.collapsed.bed",
+    "indexed": false,
+    "supportsWholeGenome": true,
+    "name": "Bed - No Index"
+  },
+  {
+    "type": "annotation",
+    "format": "bed",
     "url": "https://s3.amazonaws.com/igv.org.test/data/gencode.v18.collapsed.bed",
     "indexURL": "https://s3.amazonaws.com/igv.org.test/data/gencode.v18.collapsed.bed.idx",
     "name": "Bed - Tribble Index"
   },
   {
-    "type": "bed",
+    "type": "annotation",
+    "format": "bed",
     "url": "https://data.broadinstitute.org/igvdata/annotations/hg19/dbSnp/snp137.hg19.bed.gz",
     "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg19/dbSnp/snp137.hg19.bed.gz.tbi",
     "name": "dbSNP 137 - Tribble index",
     "visibilityWindow": 200000
   },
   {
+    "type": "annotation",
+    "format": "gtf",
     "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v24lift37.annotation.sorted.gtf.gz",
     "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v24lift37.annotation.sorted.gtf.gz.tbi",
     "name": "Gencode v24 (gtf)",
-    "format": "gtf",
     "visibilityWindow": 10000000
   },
   {
@@ -150,7 +245,33 @@
     "name": "GBM Copy # (TCGA Broad GDAC)"
   },
   {
+    "name": "cBIO - 10,000+ samples, chr17",
+    "type": "seg",
+    "displayMode": "FILL",
+    "sourceType": "custom",
+    "source": {
+      "url": "http://www.cbioportal.org/api-legacy/copynumbersegments",
+      "method": "POST",
+      "contentType": "application/x-www-form-urlencoded",
+      "body": "cancerStudyId=msk_impact_2017&chromosomes=17&sampleListId=msk_impact_2017_cnaseq",
+      "mappings": {
+        "sampleKey": "sample"
+      }
+    },
+    "height": 500
+  },
+  {
     "HEADING": "BigWig - BigBed"
+  },
+  {
+    "url": "https://www.encodeproject.org/files/ENCFF754TJH/@@download/ENCFF754TJH.bigWig",
+    "name": "Encode bigwig"
+  },
+  {
+    "url": "https://www.encodeproject.org/files/ENCFF754TJH/@@download/ENCFF754TJH.bigWig",
+    "graphType": "points",
+    "pointSize": 3,
+    "name": "Encode bigwig points"
   },
   {
     "url": "https://s3-us-west-2.amazonaws.com/ilmn.igv-test/test2.bigWig",
@@ -169,6 +290,9 @@
   {
     "url": "http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeBroadHistone/wgEncodeBroadHistoneGm12878H3k4me3StdSig.bigWig",
     "name": "Gm12878H3k4me3"
+  },
+  {
+    "HEADING": "TDF"
   },
   {
     "url": "https://data.broadinstitute.org/igvdata/encode/hg19/broadHistone/wgEncodeBroadHistoneGm12878H3k4me2StdSig.wig.tdf",
@@ -308,15 +432,17 @@
     "id": "BroadHiSeqX_b37/NA12878"
   },
   {
-    "HEADING": "IGV Flask Server"
+    "HEADING": "IGV Flask Server - hg38"
   },
   {
     "name": "Known Genes (UCSC service)",
     "type": "annotation",
     "displayMode": "EXPANDED",
+    "visibilityWindow": 2000000,
     "sourceType": "ucscservice",
     "source": {
-      "url": "https://data.igv.org/ucsc?db=hg19",
+      "url": "https://data.igv.org/ucsc",
+      "db": "hg38",
       "method": "GET",
       "tableName": "knownGene"
     }
@@ -324,38 +450,112 @@
   {
     "name": "Gencode V28 - hg38 (UCSC service)",
     "type": "annotation",
+    "visibilityWindow": 2000000,
     "displayMode": "EXPANDED",
     "sourceType": "ucscservice",
     "source": {
-      "url": "https://data.igv.org/ucsc?db=hg38",
+      "url": "https://data.igv.org/ucsc",
+      "db": "hg38",
       "method": "GET",
       "tableName": "wgEncodeGencodeBasicV28"
     }
   },
   {
-    "name": "SNP 150 (hg19)",
-    "type": "snp",
+    "name": "sno/miRNA (UCSC service)",
+    "type": "annotation",
     "displayMode": "EXPANDED",
     "sourceType": "ucscservice",
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "hg38",
+      "method": "GET",
+      "tableName": "wgRna"
+    }
+  },
+  {
+    "name": "GWAS",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "visibilityWindow": 1000000,
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "hg38",
+      "method": "GET",
+      "tableName": "gwasCatalog"
+    }
+  },
+  {
+    "name": "CPG Islands",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "visibilityWindow": 2000000,
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "hg38",
+      "method": "GET",
+      "tableName": "cpgIslandExt"
+    }
+  },
+  {
+    "HEADING": "UCSC Formats - hg19"
+  },
+  {
+    "name": "sno/miRNA (UCSC service) hg19",
+    "type": "annotation",
+    "format": "wgRna",
+    "displayMode": "EXPANDED",
+    "url": "https://s3.amazonaws.com/igv.org.genomes/hg19/annotations/wgRna.txt.gz"
+  },
+  {
+    "name": "GWAS hg19",
+    "type": "annotation",
+    "format": "gwasCatalog",
+    "displayMode": "EXPANDED",
+    "visibilityWindow": -1,
+    "url": "https://s3.amazonaws.com/igv.org.genomes/hg19/annotations/gwasCatalog.txt.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.org.genomes/hg19/annotations/gwasCatalog.txt.gz.tbi"
+  },
+  {
+    "name": "CPG Islands hg19",
+    "type": "annotation",
+    "format": "cpgIslandExt",
+    "displayMode": "EXPANDED",
+    "url": "https://s3.amazonaws.com/igv.org.genomes/hg19/annotations/cpgIslandExt.txt.gz"
+  },
+  {
+    "name": "SNP 150 (hg19)",
+    "type": "snp",
+    "format": "snp",
     "visibilityWindow": 10000,
     "height": 30,
-    "source": {
-      "url": "https://data.igv.org/ucsc?db=hg19",
-      "method": "GET",
-      "tableName": "snp150Common"
-    }
+    "url": "https://s3.amazonaws.com/igv.org.genomes/hg19/snp150Common.txt.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.org.genomes/hg19/snp150Common.txt.gz.tbi"
   },
   {
     "name": "SNP 150 (hg38)",
     "type": "snp",
-    "displayMode": "EXPANDED",
-    "sourceType": "ucscservice",
+    "format": "snp",
     "visibilityWindow": 10000,
     "height": 30,
+    "url": "https://s3.amazonaws.com/igv.org.genomes/hg38/annotations/snp150Common.txt.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.org.genomes/hg38/annotations/snp150Common.txt.gz.tbi"
+  },
+  {
+    "HEADING": "IGV Flask Server - mm10"
+  },
+  {
+    "name": "UCSC Genes",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "visibilityWindow": 2000000,
     "source": {
-      "url": "https://data.igv.org/ucsc?db=hg38",
+      "url": "https://data.igv.org/ucsc",
+      "db": "mm10",
       "method": "GET",
-      "tableName": "snp150"
+      "tableName": "knownGene"
     }
   },
   {
@@ -363,14 +563,69 @@
     "type": "annotation",
     "displayMode": "EXPANDED",
     "sourceType": "ucscservice",
+    "visibilityWindow": 100000,
     "source": {
-      "url": "https://data.igv.org/ucsc?db=hg19",
+      "url": "https://data.igv.org/ucsc",
+      "db": "mm10",
       "method": "GET",
       "tableName": "rmsk"
     }
   },
   {
-    "HEADING": "IGV CRAM Server (http: only)"
+    "name": "Common SNPs (142)",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "visibilityWindow": 100000,
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "mm10",
+      "method": "GET",
+      "tableName": "snp142Common"
+    }
+  },
+  {
+    "HEADING": "IGV Flask Server - danRer11"
+  },
+  {
+    "name": "RefSeq Genes",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "danRer11",
+      "method": "GET",
+      "tableName": "ncbiRefSeq"
+    }
+  },
+  {
+    "name": "Ensembl Genes",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "danRer11",
+      "method": "GET",
+      "tableName": "ensGene"
+    }
+  },
+  {
+    "name": "Repeat Masker",
+    "type": "annotation",
+    "displayMode": "EXPANDED",
+    "sourceType": "ucscservice",
+    "visibilityWindow": 100000,
+    "source": {
+      "url": "https://data.igv.org/ucsc",
+      "db": "danRer11",
+      "method": "GET",
+      "tableName": "rmsk"
+    }
+  },
+  {
+    "HEADING": "IGV CRAM Server "
   },
   {
     "name": "CRAM file (flask server)",
@@ -380,5 +635,203 @@
     "alignmentFile": "/home/ec2-user/test/data/cram_with_crai_index.cram",
     "referenceFile": "/home/ec2-user/test/data/hg19mini.fa",
     "label": "CRAM file"
+  },
+  {
+    "HEADING": "Repeat Masker - hg19"
+  },
+  {
+    "name": "SINE",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/SINE.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/SINE.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "LINE",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/LINE.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/LINE.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "LTR",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/LTR.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/LTR.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "DNA",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/DNA.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/DNA.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Simple",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/Simple_repeat.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/Simple_repeat.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Low Complexity",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/Low_complexity.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/Low_complexity.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Satellite",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/Satellite.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/Satellite.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "RC",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/RC.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/RC.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "RNA",
+    "url": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/RNA.rmask.gz",
+    "indexURL": "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/variations/RNA.rmask.gz.tbi",
+    "type": "annotation",
+    "format": "rmsk",
+    "visibilityWindow": 10000000
+  },
+  {
+    "HEADING": "Repeat Masker - hg38"
+  },
+  {
+    "name": "SINE",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/SINE.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/SINE.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "LINE",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/LINE.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/LINE.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "LTR",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/LTR.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/LTR.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "DNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/DNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/DNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Simple",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Simple_repeat.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Simple_repeat.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Low Complexity",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Low_complexity.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Low_complexity.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Satellite",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Satellite.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Satellite.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "RC",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/RC.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/RC.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "Retroposon",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Retroposon.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/Retroposon.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "RNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/RNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/RNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "rRNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/rRNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/rRNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "scRNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/scRNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/scRNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "snRNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/snRNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/snRNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "srpRNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/srpRNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/srpRNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
+  },
+  {
+    "name": "tRNA",
+    "url": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/tRNA.bed.gz",
+    "indexURL": "https://data.broadinstitute.org/igvdata/annotations/hg38/rmsk/tRNA.bed.gz.tbi",
+    "type": "annotation",
+    "format": "bed",
+    "visibilityWindow": 10000000
   }
 ]

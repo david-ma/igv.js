@@ -17,7 +17,7 @@
     <!-- Vendor CSS -->
     <link rel="stylesheet" type="text/css" href="../vendor/fa-svg-with-js.css"/>
 
-    <script src="js/cBio.js"></script>
+    <script src="js/dev.js"></script>
 
     <!-- Vendor JS -->
     <script src="../vendor/jquery-3.3.1.slim.js"></script>
@@ -32,7 +32,7 @@
     <script src="../js/feature/mergedTrack.js"></script>
 
 
-    <script src="../js/bam/coverageMap.js"></script>
+
     <script src="../js/bam/bamReader.js"></script>
     <script src="../js/bam/bamReaderNonIndexed.js"></script>
     <script src="../js/bam/bgzf.js"></script>
@@ -72,12 +72,14 @@
     <script src="../js/feature/segTrack.js"></script>
     <script src="../js/feature/dataWrapper.js"></script>
     <script src="../js/feature/interactionTrack.js"></script>
+    <script src="../js/rna/rnaStruct.js"></script>
     <script src="../js/feature/ucscServiceReader.js"></script>
 
     <script src="../js/ga4gh/ga4ghAlignmentReader.js"></script>
     <script src="../js/ga4gh/ga4ghVariantReader.js"></script>
     <script src="../js/ga4gh/ga4ghHelper.js"></script>
     <script src="../js/ga4gh/googleUtils.js"></script>
+    <script src="../js/oauth.js"></script>
 
     <script src="../js/gtex/eqtlTrack.js"></script>
     <script src="../js/gtex/gtexReader.js"></script>
@@ -90,6 +92,7 @@
     <script src="../js/tdf/tdfReader.js"></script>
     <script src="../js/tdf/tdfSource.js"></script>
 
+    <script src="../js/ui/draggable.js"></script>
     <script src="../js/ui/trackMenuPopupDialog.js"></script>
     <script src="../js/ui/dataRangeDialog.js"></script>
     <script src="../js/ui/inputDialog.js"></script>
@@ -102,6 +105,7 @@
     <script src="../js/ui/alertDialog.js"></script>
     <script src="../js/ui/popover.js"></script>
     <script src="../js/ui/chromosomeSelectWidget.js"></script>
+    <script src="../js/ui/zoomWidget.js"></script>
 
     <script src="../js/variant/vcfParser.js"></script>
     <script src="../js/variant/variant.js"></script>
@@ -117,7 +121,9 @@
     <script src="../js/genome.js"></script>
     <script src="../js/trackView.js"></script>
     <script src="../js/viewport.js"></script>
-
+    <script src="../js/ui/genericContainer.js"></script>
+    <script src="../js/ui/trackGearPopover.js"></script>
+    
     <script src="../js/rulerTrack.js"></script>
     <script src="../js/rulerSweeper.js"></script>
 
@@ -135,13 +141,17 @@
     <script src="../js/intervalTree.js"></script>
 
     <script src="../js/trackCore.js"></script>
-
-
+    <script src="../js/trackBase.js"></script>
 
     <script src="../js/roi.js"></script>
     <script src="../js/roiSource.js"></script>
     <script src="../vendor/tdigest.js"></script>
     <script src="../vendor/rbtree.js"></script>
+    <script src="../js/canvas2svg.js"></script>
+
+    <script src="js/cBio.js"></script>
+
+    <script src="../js/navbarManager.js"></script>
 
 </head>
 
@@ -163,15 +173,34 @@
     document.addEventListener("DOMContentLoaded", function () {
 
 
-
         const options = {
-            genome: "hg19"
+            genome: "hg19",
+            tracks: [
+                {
+                    name: "CNA",
+                    type: "seg",
+                    displayMode: "FILL",
+                    sourceType: "custom",
+                    height: 600,
+                    source: {
+                        url: "http://www.cbioportal.org/api-legacy/copynumbersegments",
+                        method: "POST",
+                        contentType: "application/x-www-form-urlencoded",
+                        body: "cancerStudyId=msk_impact_2017&chromosomes=17&sampleListId=msk_impact_2017_cnaseq",
+                        mappings: {
+                            sampleKey: "sample"
+                        },
+                        queryable: false
+                    },
+                }
+            ]
         }
 
+
         igv.createBrowser(igvDiv, options)
-                .then(function (browser) {
-                    cBio.initMenu(document.getElementById('trackList'), browser);
-                })
+            .then(function (browser) {
+              //  cBio.initMenu(document.getElementById('trackList'), browser);
+            })
 
 
     });

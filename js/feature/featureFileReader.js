@@ -49,8 +49,7 @@ var igv = (function (igv) {
             this.dataURI = config.url;
         } else {
             uriParts = igv.parseUri(this.config.url);
-            this.filename = uriParts.file;
-            this.path = uriParts.path;
+            this.filename = config.filename || uriParts.file;
         }
 
         this.format = this.config.format;
@@ -105,8 +104,10 @@ var igv = (function (igv) {
                     } else if (index) {
 
                         // Load the file header (not HTTP header) for an indexed file.
-                        // TODO -- note this will fail if the file header is > 65kb in size
-                        options = igv.buildOptions(self.config, {bgz: index.tabix, range: {start: 0, size: 65000}});
+                        // TODO -- we need a better solution here, this will fail if header exceeds max size.   This however is unlikely.
+                        let maxSize = "vcf" === self.config.format ? 65000 : 1000;
+                        if(self.config.filename && self.config.filename.endsWith(".gz")) maxSize /= 2;
+                        options = igv.buildOptions(self.config, {bgz: index.tabix, range: {start: 0, size: maxSize}});
 
                         return igv.xhr.loadString(self.config.url, options)
                             .then(function (data) {
@@ -332,25 +333,13 @@ var igv = (function (igv) {
     };
 
     igv.FeatureFileReader.prototype.loadFeaturesFromDataURI = function () {
-        var bytes, inflate, plain, features,
-            split = this.dataURI.split(','),
-            info = split[0].split(':')[1],
-            dataString = split[1];
 
-        if (info.indexOf('base64') >= 0) {
-            dataString = atob(dataString);
-        } else {
-            dataString = decodeURI(dataString);
+        const plain = igv.decodeDataURI(this.dataURI)
+        this.header = this.parser.parseHeader(plain);
+        if (this.header instanceof String && this.header.startsWith("##gff-version 3")) {
+            this.format = 'gff3';
         }
-
-        bytes = new Uint8Array(dataString.length);
-        for (var i = 0; i < dataString.length; i++) {
-            bytes[i] = dataString.charCodeAt(i);
-        }
-
-        inflate = new Zlib.Gunzip(bytes);
-        plain = inflate.decompress();
-        features = this.parser.parseFeatures(plain);
+        const features = this.parser.parseFeatures(plain);
         return Promise.resolve(features);
     };
 

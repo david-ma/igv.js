@@ -36,8 +36,8 @@ var igv = (function (igv) {
         this.disableButtons = true;
         this.ignoreTrackMenu = true;
         this.order = -Number.MAX_VALUE;
-        this.rulerSweepers = [];
         this.removable = false;
+        this.type = 'ruler';
 
     };
 
@@ -63,21 +63,15 @@ var igv = (function (igv) {
 
         $viewport.addClass('igv-viewport-ruler');
 
-        $close = $('<div class="igv-viewport-fa-close">');
+        $close = $('<div class="igv-multi-locus-panel-close-container">');
         $viewport.append($close);
 
-        $closeButton = $('<div>');
-        $closeButton.append(igv.createIcon("times-circle"));
-        $close.append($closeButton);
+        $close.append(igv.createIcon("times-circle"));
 
         $close.click(function (e) {
             browser.removeMultiLocusPanelWithGenomicState(genomicState, true);
         });
 
-    };
-
-    igv.RulerTrack.prototype.removeRulerSweeperWithLocusIndex = function (index) {
-        this.rulerSweepers.splice(index, 1);
     };
 
     igv.RulerTrack.prototype.getFeatures = function (chr, bpStart, bpEnd) {
@@ -86,61 +80,87 @@ var igv = (function (igv) {
 
     };
 
+    igv.RulerTrack.prototype.computePixelHeight = function (ignore) {
+        return this.height;
+    };
+
     igv.RulerTrack.prototype.draw = function (options) {
-        var key,
-            rulerSweeper,
-            $viewportContent,
-            pixelWidthBP,
-            tick,
-            shim,
-            tickHeight;
 
-        key = this.browser.genomicStateList.indexOf(options.genomicState).toString();
-        rulerSweeper = this.rulerSweepers[key];
-        if (!rulerSweeper) {
-            //console.log("No rulerSweeper for key: " + key);
-            return;
-        }
+        if (igv.isWholeGenomeView(options.referenceFrame)) {
 
+            options.viewport.rulerSweeper.disableMouseHandlers();
 
-        $viewportContent = $(rulerSweeper.viewport.contentDiv);
+            drawWholeGenome.call(this, options);
 
-        if ('all' === options.referenceFrame.chrName.toLowerCase()) {
-
-            $viewportContent.find('canvas').hide();
-            $viewportContent.find('.igv-whole-genome-container').show();
-            rulerSweeper.disableMouseHandlers();
         } else {
 
-            $viewportContent.find('.igv-whole-genome-container').hide();
-            $viewportContent.find('canvas').show();
-            rulerSweeper.addMouseHandlers();
+            options.viewport.rulerSweeper.addMouseHandlers();
 
-            tickHeight = 6;
-            shim = 2;
-
-            pixelWidthBP = 1 + Math.floor(options.referenceFrame.toBP(options.pixelWidth));
-            tick = new Tick(pixelWidthBP, options);
+            const tickHeight = 6;
+            const shim = 2;
+            const pixelWidthBP = 1 + Math.floor(options.referenceFrame.toBP(options.pixelWidth));
+            const tick = new Tick(pixelWidthBP, options);
 
             tick.drawTicks(options, tickHeight, shim, this.height);
-
             igv.graphics.strokeLine(options.context, 0, this.height - shim, options.pixelWidth, this.height - shim);
 
         }
 
     };
 
+    function drawWholeGenome(options) {
+
+        options.context.save();
+
+        igv.graphics.fillRect(options.context, 0, 0, options.pixelWidth, options.pixelHeight, { 'fillStyle' : 'white' });
+
+        let y = 0;
+        let h = options.pixelHeight;
+
+        for (let name of this.browser.genome.wgChromosomeNames) {
+
+            let xBP = this.browser.genome.getCumulativeOffset(name);
+            let wBP = this.browser.genome.getChromosome(name).bpLength;
+
+            let x = Math.round(xBP / options.bpPerPixel);
+            let w = Math.round(wBP / options.bpPerPixel);
+
+            renderChromosomeRect.call(this, options.context, x, y, w, h, name);
+        }
+
+        options.context.restore();
+
+    }
+
+    function renderChromosomeRect(ctx, x, y, w, h, name) {
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '12px sans-serif';
+
+        // igv.graphics.fillRect(ctx, x, y, w, h, { 'fillStyle' : toggleColor(this.browser.genome.wgChromosomeNames.indexOf(name)) });
+
+        igv.graphics.strokeLine(ctx, x + w, y, x + w, y + h, { strokeStyle: igv.Color.greyScale(191) });
+
+        const shortName = (name.startsWith("chr")) ? name.substring(3) : name;
+
+        if (w > ctx.measureText(shortName).width) {
+            igv.graphics.fillText(ctx, shortName, (x + (w/2)), (y + (h/2)), { fillStyle: igv.Color.greyScale(68) });
+        }
+
+    }
+
+    function toggleColor (value) {
+        return 0 === value % 2 ? 'rgb(250,250,250)' : 'rgb(255,255,255)';
+    }
+
     igv.RulerTrack.prototype.supportsWholeGenome = function () {
         return true;
-    }
+    };
 
     igv.RulerTrack.prototype.dispose = function () {
-
-        this.rulerSweepers.forEach(function (sweeper) {
-            sweeper.dispose();
-        })
-
-    }
+        // do stuff
+    };
 
     const Tick = function (pixelWidthBP, options) {
 
@@ -154,8 +174,10 @@ var igv = (function (igv) {
                 numberOfMajorTicks,
                 str;
 
+            const isSVGContext = options.context.isSVG || false;
+
             if (pixelWidthBP < 10) {
-                set.call(this, 1, "bp", 1);
+                set.call(this, 1, "bp", 1, isSVGContext);
             }
 
             numberOfZeroes = Math.floor(Math.log10(pixelWidthBP));
@@ -180,17 +202,17 @@ var igv = (function (igv) {
             numberOfMajorTicks = pixelWidthBP / Math.pow(10, numberOfZeroes - 1);
 
             if (numberOfMajorTicks < 25) {
-                set.call(this, Math.pow(10, numberOfZeroes - 1), majorUnit, unitMultiplier);
+                set.call(this, Math.pow(10, numberOfZeroes - 1), majorUnit, unitMultiplier, isSVGContext);
             } else {
-                set.call(this, Math.pow(10, numberOfZeroes) / 2, majorUnit, unitMultiplier);
+                set.call(this, Math.pow(10, numberOfZeroes) / 2, majorUnit, unitMultiplier, isSVGContext);
             }
 
-            // this.description( (Math.floor(numberOfMajorTicks)) );
         }
 
-        function set(majorTick, majorUnit, unitMultiplier) {
+        function set(majorTick, majorUnit, unitMultiplier, isSVGContext) {
 
-            this.majorTick = majorTick;
+            // reduce label frequency by half for SVG rendering
+            this.majorTick = true === isSVGContext ? 2 * majorTick : majorTick;
             this.majorUnit = majorUnit;
 
             this.halfTick = majorTick / 2;
@@ -211,8 +233,10 @@ var igv = (function (igv) {
             numer,
             floored;
 
-        // major ticks
+
         numberOfTicks = Math.floor(options.bpStart / this.majorTick) - 1;
+        labelWidth = 0;
+        labelX = 0;
         pixel = 0;
         while (pixel < options.pixelWidth) {
 
@@ -221,15 +245,15 @@ var igv = (function (igv) {
 
             label = igv.numberFormatter(Math.floor(bp / this.unitMultiplier)) + " " + this.majorUnit;
             labelWidth = options.context.measureText(label).width;
-            labelX = pixel - labelWidth / 2;
-            igv.graphics.fillText(options.context, label, labelX, height - (tickHeight / 0.75));
 
+            labelX = Math.round(pixel - labelWidth / 2);
+
+            igv.graphics.fillText(options.context, label, labelX, height - (tickHeight / 0.75));
             igv.graphics.strokeLine(options.context, pixel, height - tickHeight, pixel, height - shim);
 
             ++numberOfTicks;
         }
 
-        // major ticks
         numberOfTicks = Math.floor(options.bpStart / this.halfTick) - 1;
         pixel = 0;
         while (pixel < options.pixelWidth) {
@@ -238,7 +262,7 @@ var igv = (function (igv) {
             pixel = Math.round(options.referenceFrame.toPixels((bp - 1) - options.bpStart + 0.5));
             numer = bp / this.unitMultiplier;
             floored = Math.floor(numer);
-            // console.log(numer - floored);
+
             if (numer === floored && (this.majorTick / this.labelWidthBP) > 8) {
                 label = igv.numberFormatter(Math.floor(numer)) + " " + this.majorUnit;
                 labelWidth = options.context.measureText(label).width;

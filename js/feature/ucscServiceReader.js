@@ -24,24 +24,39 @@
  * THE SOFTWARE.
  */
 
+"use strict";
+
 var igv = (function (igv) {
 
-    igv.UCSCServiceReader = function (config) {
+    igv.UCSCServiceReader = function (config, genome) {
         this.config = config;
+        this.genome = genome;
+        this.expandQueryInterval = false;
     };
 
     igv.UCSCServiceReader.prototype.readFeatures = function (chr, start, end) {
-        var self = this,
-            url = this.config.url + '&table=' + this.config.tableName + '&chr=' + chr + '&start=' + start + '&end=' + end;
 
-        return igv.xhr.loadJson(url, self.config)
+        const s = Math.max(0, Math.floor(start));
+        let e = Math.ceil(end);
+
+        if(this.genome) {
+            const c = genome.getChromosome(chr);
+            if(c && e > c.bpLength) {
+                e = c.bpLength;
+            }
+        }
+
+
+        const url = this.config.url + '?db=' + this.config.db + '&table=' + this.config.tableName + '&chr=' + chr + '&start=' + s + '&end=' + e;
+
+        return igv.xhr.loadJson(url, this.config)
             .then(function (data) {
                 if (data) {
                     data.forEach(function (sample) {
-                        if (sample.hasOwnProperty('exonStarts') && 
-                            sample.hasOwnProperty('exonEnds') && 
-                            sample.hasOwnProperty('exonCount') && 
-                            sample.hasOwnProperty('cdsStart') && 
+                        if (sample.hasOwnProperty('exonStarts') &&
+                            sample.hasOwnProperty('exonEnds') &&
+                            sample.hasOwnProperty('exonCount') &&
+                            sample.hasOwnProperty('cdsStart') &&
                             sample.hasOwnProperty('cdsEnd')) {
                             addExons(sample);
                         }

@@ -1,18 +1,15 @@
 function runAedTests() {
 
 
-    // mock objects
-    if (igv === undefined) {
-        igv = {};
-    }
-
     const genome = {
         getChromosomeName: function (chr) {
             return chr.startsWith("chr") ? chr : "chr" + chr;
         }
     }
 
-    asyncTest("AED - UTF8 with BOM", function () {
+    QUnit.test("AED - UTF8 with BOM", function (assert) {
+
+        var done = assert.async();
 
         var chr = "chr2",
             bpStart = 0,
@@ -28,20 +25,20 @@ function runAedTests() {
         featureSource.getFeatures(chr, bpStart, bpEnd)
             .then(function (features) {
 
-                equal(features.length, 1);
+                assert.equal(features.length, 1);
 
-                equal(features[0].aed.metadata.affx.ucscGenomeVersion.value, "hg19");
-                equal(features[0].aed.columns[14].name, "note");
+                assert.equal(features[0].aed.metadata.affx.ucscGenomeVersion.value, "hg19");
+                assert.equal(features[0].aed.columns[14].name, "note");
 
-                equal(features[0].name, "CNNM3");
-                equal(features[0].cdStart, null); // Missing value
-                equal(features[0].allColumns[14], "Test unicode:\r" +
+                assert.equal(features[0].name, "CNNM3");
+                assert.equal(features[0].cdStart, null); // Missing value
+                assert.equal(features[0].allColumns[14], "Test unicode:\r" +
                                                   "∞\r" +
                                                   "☃\r" +
                                                   "(infinity snowman)");
-                equal(features[0].strand, "+");
+                assert.equal(features[0].strand, "+");
 
-                start();
+                done();
             })
             .catch(function (error) {
                 console.log(error);

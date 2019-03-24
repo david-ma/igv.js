@@ -28,35 +28,96 @@ var igv = (function (igv) {
     var NONE = 0;
     var GZIP = 1;
     var BGZF = 2;
-    igv.xhr = {};
+    igv.xhr = {
 
 
-    igv.xhr.load = function (url, options) {
+        load: function (url, options) {
 
-        options = options || {};
+            options = options || {};
 
-        if (url instanceof File) {
-            return loadFileSlice(url, options);
-        } else {
-            return load.call(this, url, options);
-        }
+            if (url instanceof File) {
+                return loadFileSlice(url, options);
+            } else {
+                if(url.startsWith("data:")) {
+                    return igv.decodeDataURI(url)
+                } else {
+                    return loadURL.call(this, url, options);
+                }
+            }
 
-    };
+        },
 
+        loadArrayBuffer: function (url, options) {
 
-    function load(url, options) {
+            options = options || {};
+            options.responseType = "arraybuffer";
+
+            if (url instanceof File) {
+                return loadFileSlice(url, options);
+            } else {
+
+                return loadURL.call(this, url, options);
+            }
+
+        },
+
+        loadJson: function (url, options) {
+
+            options = options || {};
+
+            var method = options.method || (options.sendData ? "POST" : "GET");
+
+            if (method == "POST") options.contentType = "application/json";
+
+            return igv.xhr.load(url, options)
+
+                .then(function (result) {
+
+                    if (result) {
+                        return JSON.parse(result);
+                    }
+                    else {
+                        return result;
+                    }
+                })
+
+        },
+
+        loadString: function (path, options) {
+
+            options = options || {};
+
+            if (path instanceof File) {
+                return loadStringFromFile(path, options);
+            } else {
+                return loadStringFromUrl(path, options);
+            }
+        },
+
+        startup: startup
+    }
+
+    function loadURL(url, options) {
 
         url = mapUrl(url);
 
         options = options || {};
 
-        if (!options.oauthToken) {
+        let oauthToken = options.oauthToken;
+
+        if (!oauthToken) {
+            oauthToken = getOauthToken(url);
+        }
+
+        if (!oauthToken) {
+
             return getLoadPromise(url, options);
+
         } else {
 
-            var token = _.isFunction(options.oauthToken) ? options.oauthToken() : options.oauthToken;
+            let token = (typeof oauthToken === 'function') ? oauthToken() : oauthToken;
 
-            if (token.then && _.isFunction(token.then)) {
+            if (token.then && (typeof token.then === 'function')) {
                 return token.then(applyOauthToken);
             }
             else {
@@ -64,7 +125,6 @@ var igv = (function (igv) {
             }
         }
 
-        ////////////
 
         function applyOauthToken(token) {
             if (token) {
@@ -78,38 +138,26 @@ var igv = (function (igv) {
 
             return new Promise(function (fullfill, reject) {
 
-                var xhr = new XMLHttpRequest(),
-                    sendData = options.sendData || options.body,
-                    method = options.method || (sendData ? "POST" : "GET"),
-                    range = options.range,
-                    responseType = options.responseType,
-                    contentType = options.contentType,
-                    mimeType = options.mimeType,
-                    headers = options.headers || {},
-                    isSafari = navigator.vendor.indexOf("Apple") == 0 && /\sSafari\//.test(navigator.userAgent),
-                    isChrome = navigator.userAgent.indexOf('Chrome') > -1,
-                    withCredentials = options.withCredentials,
-                    header_keys, key, value, i;
+
+                var header_keys, key, value, i;
 
                 // Support for GCS paths.
-                url = url.startsWith("gs://") ? igv.Google.translateGoogleCloudURL(url) : url;
+                url = url.startsWith("gs://") ? igv.google.translateGoogleCloudURL(url) : url;
+
+                const headers = options.headers || {};
+
 
                 if (options.token) {
-                    headers["Authorization"] = 'Bearer ' + options.token;
+                    addOauthHeaders(headers, options.token);
                 }
 
                 if (isGoogleURL(url)) {
-
-                    url = igv.Google.addApiKey(url);
-
-                    // Add google headers (e.g. oAuth)
-                    headers = headers || {};
-                    igv.Google.addGoogleHeaders(headers);
-
-                } else if (options.oauth) {
-                    // "Legacy" option -- do not use (use options.token)
-                    addOauthHeaders(headers)
+                    url = igv.google.addApiKey(url);
                 }
+
+                const range = options.range;
+                const isChrome = navigator.userAgent.indexOf('Chrome') > -1;
+                const isSafari = navigator.vendor.indexOf("Apple") == 0 && /\sSafari\//.test(navigator.userAgent);
 
                 if (range && isChrome && !isAmazonV4Signed(url)) {
                     // Hack to prevent caching for byte-ranges. Attempt to fix net:err-cache errors in Chrome
@@ -117,7 +165,15 @@ var igv = (function (igv) {
                     url += "someRandomSeed=" + Math.random().toString(36);
                 }
 
+                const xhr = new XMLHttpRequest();
+                const sendData = options.sendData || options.body;
+                const method = options.method || (sendData ? "POST" : "GET");
+                const responseType = options.responseType;
+                const contentType = options.contentType;
+                const mimeType = options.mimeType;
+
                 xhr.open(method, url);
+
 
                 if (range) {
                     var rangeEnd = range.size ? range.start + range.size - 1 : "";
@@ -144,7 +200,7 @@ var igv = (function (igv) {
                 }
 
                 // NOTE: using withCredentials with servers that return "*" for access-allowed-origin will fail
-                if (withCredentials === true) {
+                if (options.withCredentials === true) {
                     xhr.withCredentials = true;
                 }
 
@@ -162,7 +218,7 @@ var igv = (function (igv) {
 
                         options.retries = 1;
 
-                        return getAccessToken()
+                        return getGoogleAccessToken()
 
                             .then(function (accessToken) {
 
@@ -206,7 +262,7 @@ var igv = (function (igv) {
                         options.sendData = "url=" + url;
                         options.crossDomainRetried = true;
 
-                        load.call(this, igv.browser.crossDomainProxy, options)
+                        loadURL.call(this, igv.browser.crossDomainProxy, options)
                             .then(fullfill);
                     }
                     else {
@@ -242,54 +298,6 @@ var igv = (function (igv) {
             });
         }
     };
-
-    igv.xhr.loadArrayBuffer = function (url, options) {
-
-        options = options || {};
-        options.responseType = "arraybuffer";
-
-        if (url instanceof File) {
-            return loadFileSlice(url, options);
-        } else {
-
-            return load.call(this, url, options);
-        }
-
-    };
-
-    igv.xhr.loadJson = function (url, options) {
-
-        options = options || {};
-
-        var method = options.method || (options.sendData ? "POST" : "GET");
-
-        if (method == "POST") options.contentType = "application/json";
-
-        return igv.xhr.load(url, options)
-
-            .then(function (result) {
-
-                if (result) {
-                    return JSON.parse(result);
-                }
-                else {
-                    return result;
-                }
-            })
-
-    };
-
-    igv.xhr.loadString = function (path, options) {
-
-        options = options || {};
-
-        if (path instanceof File) {
-            return loadStringFromFile(path, options);
-        } else {
-            return loadStringFromUrl(path, options);
-        }
-    };
-
 
     function loadFileSlice(localfile, options) {
 
@@ -394,10 +402,10 @@ var igv = (function (igv) {
 
         if (compression === NONE) {
             options.mimeType = 'text/plain; charset=x-user-defined';
-            return load.call(this, url, options);
+            return loadURL.call(this, url, options);
         } else {
             options.responseType = "arraybuffer";
-            return load.call(this, url, options)
+            return loadURL.call(this, url, options)
                 .then(function (data) {
                     return arrayBufferToString(data, compression);
                 })
@@ -421,31 +429,32 @@ var igv = (function (igv) {
 
     }
 
-
     function isAmazonV4Signed(url) {
         return url.indexOf("X-Amz-Signature") > -1;
     }
 
-    /**
-     * Legacy method to add oauth tokens.  Kept for backward compatibility.  Do not use -- use config.token setting instead.
-     * @param headers
-     * @returns {*}
-     */
-    function addOauthHeaders(headers) {
-        {
-            headers["Cache-Control"] = "no-cache";
+    function getOauthToken(url) {
 
-            var acToken = igv.oauth.google.access_token;
-            if (!acToken && typeof oauth !== "undefined") {
-                // Check legacy variable
-                acToken = oauth.google.access_token;
+        if (igv) {
+            const host = igv.parseUri(url).host;
+            let token = igv.oauth.getToken(host);
+            if (!token && igv.google.isGoogleURL(url)) {
+                token = igv.oauth.google.access_token;
             }
-            if (acToken && !headers.hasOwnProperty("Authorization")) {
+            return token;
+        }
+        else {
+            return undefined;
+        }
+    }
+
+    function addOauthHeaders(headers, acToken) {
+        {
+            if (acToken) {
+                headers["Cache-Control"] = "no-cache";
                 headers["Authorization"] = "Bearer " + acToken;
             }
-
             return headers;
-
         }
     }
 
@@ -459,7 +468,7 @@ var igv = (function (igv) {
             return url.replace("//www.dropbox.com", "//dl.dropboxusercontent.com");
         }
         else if (url.includes("//drive.google.com")) {
-            return igv.Google.driveDownloadURL(url);
+            return igv.google.driveDownloadURL(url);
         }
         else if (url.includes("//www.broadinstitute.org/igvdata")) {
             return url.replace("//www.broadinstitute.org/igvdata", "//data.broadinstitute.org/igvdata");
@@ -485,7 +494,12 @@ var igv = (function (igv) {
             plain = new Uint8Array(arraybuffer);
         }
 
-        return new TextDecoder().decode(plain);
+        if ('TextDecoder' in igv.getGlobalObject()) {
+            return new TextDecoder().decode(plain);
+        }
+        else {
+            return decodeUTF8(plain);
+        }
 
     };
 
@@ -493,23 +507,12 @@ var igv = (function (igv) {
      * Crude test for google urls.
      */
     function isGoogleURL(url) {
-        return url.includes("googleapis") && !url.includes("urlshortener");
-    }
-
-// Increments an anonymous usage count.  Count is anonymous, needed for our continued funding.  Please don't delete
-    const href = window.document.location.href;
-    if (!(href.includes("localhost") || href.includes("127.0.0.1"))) {
-        var url = "https://data.broadinstitute.org/igv/projects/current/counter_igvjs.php?version=" + "0";
-        load.call(this, url).then(function (ignore) {
-            console.log(ignore);
-        }).catch(function (error) {
-            console.log(error);
-        });
+        return igv.google.isGoogleURL(url);
     }
 
     var loginTried = false;
 
-    function getAccessToken() {
+    function getGoogleAccessToken() {
 
         if (igv.oauth.google.access_token || loginTried) {
 
@@ -532,20 +535,101 @@ var igv = (function (igv) {
 
                 loginTried = true;
 
+                return new Promise(function (resolve, reject) {
 
-                return gapi.auth2.getAuthInstance().signIn(options)
+                    igv.browser.presentMessageWithCallback("Google Login required", function () {
 
-                    .then(function (user) {
+                        gapi.auth2.getAuthInstance().signIn(options)
 
-                        var authResponse = user.getAuthResponse();
+                            .then(function (user) {
 
-                        igv.setGoogleOauthToken(authResponse["access_token"]);
+                                var authResponse = user.getAuthResponse();
 
-                        return authResponse["access_token"];
+                                igv.setGoogleOauthToken(authResponse["access_token"]);
+
+                                resolve(authResponse["access_token"]);
+                            })
+                            .catch(reject);
                     })
+                })
             }
         }
 
+    }
+
+
+    //Increments an anonymous usage count.  Count is anonymous, needed for our continued funding.  Please don't delete
+
+    let startupCalls = 0;
+
+    function startup() {
+
+        const href = window.document.location.href;
+        const host = igv.parseUri(href).host;
+
+        if (startupCalls === 0 && !href.includes("localhost") && !href.includes("127.0.0.1")) {
+            startupCalls++;
+
+            var url = "https://data.broadinstitute.org/igv/projects/current/counter_igvjs.php?version=" + "0";
+            loadURL.call(this, url).then(function (ignore) {
+                console.log(ignore);
+            }).catch(function (error) {
+                console.log(error);
+            });
+
+        }
+    }
+
+    function validateIP(address) {
+
+        const regex = new RegExp(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+        return regex.test(address);
+    }
+
+
+    /**
+     * Use when TextDecoder is not available (primarily IE).
+     *
+     * From: https://gist.github.com/Yaffle/5458286
+     *
+     * @param octets
+     * @returns {string}
+     */
+    function decodeUTF8 (octets) {
+        var string = "";
+        var i = 0;
+        while (i < octets.length) {
+            var octet = octets[i];
+            var bytesNeeded = 0;
+            var codePoint = 0;
+            if (octet <= 0x7F) {
+                bytesNeeded = 0;
+                codePoint = octet & 0xFF;
+            } else if (octet <= 0xDF) {
+                bytesNeeded = 1;
+                codePoint = octet & 0x1F;
+            } else if (octet <= 0xEF) {
+                bytesNeeded = 2;
+                codePoint = octet & 0x0F;
+            } else if (octet <= 0xF4) {
+                bytesNeeded = 3;
+                codePoint = octet & 0x07;
+            }
+            if (octets.length - i - bytesNeeded > 0) {
+                var k = 0;
+                while (k < bytesNeeded) {
+                    octet = octets[i + k + 1];
+                    codePoint = (codePoint << 6) | (octet & 0x3F);
+                    k += 1;
+                }
+            } else {
+                codePoint = 0xFFFD;
+                bytesNeeded = octets.length - i;
+            }
+            string += String.fromCodePoint(codePoint);
+            i += bytesNeeded + 1;
+        }
+        return string
     }
 
 

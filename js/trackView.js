@@ -46,13 +46,7 @@ var igv = (function (igv) {
         $container.append($track);
 
         guid = igv.guid();
-        this.mouseHandlers =
-            {
-                document:
-                    {
-                        up: 'mouseup._document_.' + guid
-                    }
-            };
+        this.namespace = '.trackview_' + guid;
 
         if (this.track instanceof igv.RulerTrack) {
             this.trackDiv.dataset.rulerTrack = "rulerTrack";
@@ -95,23 +89,32 @@ var igv = (function (igv) {
             attachDragWidget.call(this, $(this.trackDiv), this.$viewportContainer);
         }
 
-        // Create color picker.
-        config =
-        {
-            // width = (29 * swatch-width) + border-width + border-width
-            width: ((29 * 24) + 1 + 1),
-            classes: ['igv-position-absolute']
-        };
+        if ("sequence" === this.track.type) {
+            // do nothing
+        } else if (this.track instanceof igv.RulerTrack) {
+            // do nothing
+        } else {
+            this.createColorPicker();
+        }
 
-        this.$colorpicker_container = igv.genericContainer($track, config, function () {
-            self.$colorpicker_container.toggle();
-        });
 
-        igv.createColorSwatchSelector(this.$colorpicker_container, function (rgb) {
-            self.setColor(rgb);
-        });
+    };
 
-        this.$colorpicker_container.hide();
+    igv.TrackView.prototype.renderSVGContext = function (context, offset) {
+
+        for (let viewport of this.viewports) {
+
+            const index = viewport.browser.genomicStateList.indexOf(viewport.genomicState);
+            const bbox = viewport.$viewport.get(0).getBoundingClientRect();
+
+            let o =
+                {
+                    deltaX: offset.deltaX + index * viewport.$viewport.width(),
+                    deltaY: offset.deltaY + bbox.y
+                };
+
+            viewport.renderSVGContext(context, o);
+        }
 
     };
 
@@ -119,7 +122,7 @@ var igv = (function (igv) {
 
         if ("hidden" === $viewportContainer.css("overflow-y")) {
 
-            this.scrollbar = new TrackScrollbar($viewportContainer, viewports);
+            this.scrollbar = new TrackScrollbar($viewportContainer, viewports, this.browser.$root);
 
             $viewportContainer.append(this.scrollbar.$outerScroll);
         }
@@ -128,10 +131,6 @@ var igv = (function (igv) {
     };
 
     igv.TrackView.prototype.removeViewportWithLocusIndex = function (index) {
-
-        if (this.track instanceof igv.RulerTrack) {
-            this.track.removeRulerSweeperWithLocusIndex(index);
-        }
 
         this.viewports[index].$viewport.remove();
         this.viewports.splice(index, 1);
@@ -148,11 +147,11 @@ var igv = (function (igv) {
             $viewport = viewport.$viewport;
 
             if (self.viewports.length > 1) {
-                $viewport.find('.igv-viewport-fa-close').show();
-                $viewport.find('.igv-viewport-content-ruler-div').show();
+                $viewport.find('.igv-multi-locus-panel-close-container').show();
+                $viewport.find('.igv-multi-locus-panel-label-div').show();
             } else {
-                $viewport.find('.igv-viewport-fa-close').hide();
-                $viewport.find('.igv-viewport-content-ruler-div').hide();
+                $viewport.find('.igv-multi-locus-panel-close-container').hide();
+                $viewport.find('.igv-multi-locus-panel-label-div').hide();
             }
 
             if (index < self.viewports.length && (1 + index) !== self.viewports.length) {
@@ -193,19 +192,28 @@ var igv = (function (igv) {
 
     function appendRightHandGutter($parent) {
 
-        var self = this,
-            $gearButton, $fa;
-        
-        const browser = this.browser;
+        let $div = $('<div class="igv-right-hand-gutter">');
+        $parent.append($div);
 
-        this.rightHandGutter = $('<div class="igv-right-hand-gutter">')[0];
-        $parent.append($(this.rightHandGutter));
+        createTrackGearPopover.call(this, $div);
+    }
 
-        $gearButton = igv.createWrappedIcon("cog");
-        $(this.rightHandGutter).append($gearButton);
 
-        $gearButton.click(function (e) {
-            browser.popover.presentTrackGearMenu(e.pageX, e.pageY, self, browser);
+    function createTrackGearPopover($parent) {
+
+        let $cogContainer = $("<div>", { class:'igv-trackgear-container' });
+        $parent.append($cogContainer);
+
+        $cogContainer.append( igv.createIcon('cog') );
+
+        this.trackGearPopover = new igv.TrackGearPopover($parent);
+        this.trackGearPopover.$popover.hide();
+
+        let self = this;
+        $cogContainer.click(function (e) {
+            const page = igv.pageCoordinates(e);
+            // page.x, page.y
+            self.trackGearPopover.presentMenuList(-(self.trackGearPopover.$popover.width()), 0, igv.trackMenuItemList(self));
         });
 
     }
@@ -235,11 +243,7 @@ var igv = (function (igv) {
 
     function attachDragWidget($track, $viewportContainer) {
 
-        var self = this,
-            indexDestination,
-            indexDragged,
-            str;
-
+        const self = this;
         const browser = this.browser;
 
         this.$trackDragScrim = $('<div class="igv-track-drag-scrim">');
@@ -249,66 +253,38 @@ var igv = (function (igv) {
         self.$trackManipulationHandle = $('<div class="igv-track-manipulation-handle">');
         $track.append(self.$trackManipulationHandle);
 
-        self.$trackManipulationHandle.on('mousedown.trackview', function (e) {
+        self.$trackManipulationHandle.on('mousedown', function (e) {
             e.preventDefault();
-            self.isMouseDown = true;
-            dragged = self;
+            e.stopPropagation();
+            self.$trackDragScrim.show();
+            browser.startTrackDrag(self);
         });
 
-        self.$trackManipulationHandle.on('mouseup.trackview', function (e) {
+        self.$trackManipulationHandle.on('mouseup', function (e) {
             e.preventDefault();
-            self.isMouseDown = undefined;
+            e.stopPropagation();
+            browser.endTrackDrag();
+            self.$trackDragScrim.hide();
         });
 
-        self.$trackManipulationHandle.on('mouseenter.trackview', function (e) {
-            e.preventDefault();
-            self.isMouseIn = true;
-            dragDestination = self;
+        $track.on('mouseenter', function (e) {
 
-            if (undefined === dragged) {
-                self.$trackDragScrim.show();
-            } else if (self === dragged) {
-                self.$trackDragScrim.show();
-            }
-
-            if ((dragDestination && dragged) && (dragDestination !== dragged)) {
-
-                indexDestination = browser.trackViews.indexOf(dragDestination);
-                indexDragged = browser.trackViews.indexOf(dragged);
-
-                browser.trackViews[indexDestination] = dragged;
-                browser.trackViews[indexDragged] = dragDestination;
-
-                if (indexDestination < indexDragged) {
-                    $(dragged.trackDiv).insertBefore($(dragDestination.trackDiv));
-                } else {
-                    $(dragged.trackDiv).insertAfter($(dragDestination.trackDiv));
-                }
-
+            if (browser.dragTrack) {
+                e.preventDefault();
+                e.stopPropagation();
+                browser.updateTrackDrag(self);
             }
 
         });
 
-        self.$trackManipulationHandle.on('mouseleave.trackview', function (e) {
-            e.preventDefault();
-            self.isMouseIn = undefined;
-            dragDestination = undefined;
+        self.$trackManipulationHandle.on('mouseleave', function (e) {
 
-            if (self !== dragged) {
+            if (!browser.dragTrack) {
+                e.preventDefault();
+                e.stopPropagation();
                 self.$trackDragScrim.hide();
             }
-
         });
-
-        $(document).on(self.mouseHandlers.document.up, function (e) {
-
-            if (dragged) {
-                dragged.$trackDragScrim.hide();
-            }
-
-            dragged = undefined;
-        });
-
     }
 
     igv.TrackView.prototype.dataRange = function () {
@@ -337,6 +313,37 @@ var igv = (function (igv) {
         this.track.color = color;
         this.track.config.color = color;
         this.repaintViews(true);
+    };
+
+    igv.TrackView.prototype.createColorPicker = function () {
+
+        let self = this;
+
+        const config =
+            {
+                $parent: $(this.trackDiv),
+
+                width: 384,
+
+                height: undefined,
+                closeHandler: () => {
+                    self.colorPicker.$container.hide();
+                }
+            };
+
+        this.colorPicker = new igv.genericContainer(config);
+
+        igv.createColorSwatchSelector(this.colorPicker.$container, rgb => this.setColor(rgb), this.track.color);
+
+        self.colorPicker.$container.hide();
+
+    };
+
+    igv.TrackView.prototype.presentColorPicker = function () {
+        const bbox = this.trackDiv.getBoundingClientRect();
+        this.colorPicker.origin = {x: bbox.x, y: 0};
+        this.colorPicker.$container.offset({left: this.colorPicker.origin.x, top: this.colorPicker.origin.y});
+        this.colorPicker.$container.show();
     };
 
     igv.TrackView.prototype.setTrackHeight = function (newHeight, update, force) {
@@ -395,6 +402,9 @@ var igv = (function (igv) {
             viewport.setWidth(width);
         });
 
+        var $leftHandGutter = $(this.leftHandGutter);
+        resizeControlCanvas.call(this, $leftHandGutter.outerWidth(), $leftHandGutter.outerHeight());
+
         this.updateViews(true);
 
     };
@@ -432,17 +442,15 @@ var igv = (function (igv) {
 
         if (!(this.browser && this.browser.genomicStateList)) return;
 
-        if (igv.TrackView.DisableUpdates) return;
-
         let self = this, promises, rpV, groupAutoscale;
 
-        this.viewports.forEach(function (viewport) {
+        const visibleViewports = this.viewports.filter(vp => vp.isVisible())
+
+        visibleViewports.forEach(function (viewport) {
             viewport.shift();
         });
 
-        let isDragging = this.viewports.some(function (vp) {
-            return vp.isDragging
-        });
+        let isDragging = this.browser.isDragging;
 
         // List of viewports that need reloading
         rpV = viewportsToReload.call(this, force);
@@ -465,7 +473,7 @@ var igv = (function (igv) {
                 if (!isDragging && self.track.autoscale) {
 
                     var allFeatures = [];
-                    self.viewports.forEach(function (vp) {
+                    visibleViewports.forEach(function (vp) {
                         var referenceFrame, chr, start, end, cache;
                         referenceFrame = vp.genomicState.referenceFrame;
                         start = referenceFrame.start;
@@ -481,10 +489,10 @@ var igv = (function (igv) {
                         }
                     });
 
-                    if(typeof self.track.doAutoscale === 'function') {
+                    if (typeof self.track.doAutoscale === 'function') {
                         self.track.doAutoscale(allFeatures);
                     } else {
-                        self.track.dataRange = igv.WIGTrack.doAutoscale(allFeatures);
+                        self.track.dataRange = igv.doAutoscale(allFeatures);
                     }
                 }
 
@@ -494,7 +502,7 @@ var igv = (function (igv) {
 
                 // Must repaint all viewports if autoscaling
                 if (!isDragging && (self.track.autoscale || self.track.autoscaleGroup)) {
-                    self.viewports.forEach(function (vp) {
+                    visibleViewports.forEach(function (vp) {
                         vp.repaint();
                     })
                 }
@@ -559,9 +567,11 @@ var igv = (function (igv) {
 
         // List of viewports that need reloading
         rpV = this.viewports.filter(function (viewport) {
-
+            if(!viewport.isVisible()) {
+                return false
+            }
             if (!viewport.checkZoomIn()) {
-                return false;
+                return false
             }
             else {
                 var bpPerPixel, referenceFrame, chr, start, end;
@@ -587,26 +597,38 @@ var igv = (function (igv) {
 
     function adjustTrackHeight() {
 
-        var maxHeight = maxContentHeight(this.viewports);
+        var maxHeight = this.maxContentHeight();
         if (this.track.autoHeight) {
             this.setTrackHeight(maxHeight, false);
         }
         else if (this.track.paintAxis) {   // Avoid duplication, paintAxis is already called in setTrackHeight
             this.track.paintAxis(this.controlCtx, $(this.controlCanvas).width(), $(this.controlCanvas).height());
         }
+
         if (this.scrollbar) {
+            const currentTop = this.viewports[0].getContentTop();
+            const newTop =  Math.min(0, minContentHeight(this.viewports) - this.$viewportContainer.height());
+            if(currentTop < newTop) {
+                this.viewports.forEach(function (viewport) {
+                    $(viewport.contentDiv).css("top", newTop + "px");
+                });
+            }
             this.scrollbar.update();
         }
     }
 
-    function maxContentHeight(viewports) {
-        var height = 0;
-        viewports.forEach(function (viewport) {
-            var hgt = viewport.getContentHeight();
-            height = Math.max(hgt, height);
-        });
+    igv.TrackView.prototype.maxContentHeight = function () {
+        return maxContentHeight(this.viewports);
+    }
 
-        return height;
+    function maxContentHeight(viewports) {
+        const heights = viewports.map((viewport)  => viewport.getContentHeight());
+        return Math.max(...heights);
+    }
+
+    function minContentHeight(viewports) {
+        const heights = viewports.map((viewport)  => viewport.getContentHeight());
+        return Math.min(...heights);
     }
 
     /**
@@ -624,18 +646,18 @@ var igv = (function (igv) {
             this.$innerScroll.off();
         }
 
-        if(this.scrollbar) {
+        if (this.scrollbar) {
             this.scrollbar.dispose();
         }
 
-        $(document).off(this.mouseHandlers.document.up);
+        $(document).off(this.namespace);
 
         if (typeof this.track.dispose === "function") {
             this.track.dispose();
         }
 
         var track = this.track;
-        if(typeof track.dispose === 'function') {
+        if (typeof track.dispose === 'function') {
             track.dispose();
         }
         Object.keys(track).forEach(function (key) {
@@ -659,27 +681,70 @@ var igv = (function (igv) {
             self[key] = undefined;
         })
 
-    }
+    };
 
-    const TrackScrollbar = function ($viewportContainer, viewports) {
 
-        var self = this,
-            offY,
-            contentDivHeight,
-            guid;
+    igv.TrackView.prototype.scrollBy = function (delta) {
+        this.scrollbar.moveScrollerBy(delta);
+    };
 
-        guid = igv.guid();
-        this.mouseHandlers =
-            {
-                window:
-                    {
-                        up:'mouseup._window_.' + guid,
-                        move:'mousemove._window_.' + guid
-                    }
+    igv.createColorSwatchSelector = function ($genericContainer, colorHandler, defaultColor) {
 
-            };
+        let appleColors = Object.values(igv.appleCrayonPalette);
 
-        this.$outerScroll = $('<div class="igv-scrollbar-outer-div">');
+        if (defaultColor) {
+
+            // Remove 'snow' color.
+            appleColors.splice(11, 1);
+
+            // Add default color.
+            appleColors.unshift(igv.Color.rgbToHex(defaultColor));
+        }
+
+        for (let color of appleColors) {
+
+            let $swatch = $('<div>', {class: 'igv-color-swatch'});
+            $genericContainer.append($swatch);
+
+            $swatch.css('background-color', color);
+
+            if ('white' === color) {
+                // do nothing
+                console.log('-');
+            } else {
+
+                $swatch.hover(() => {
+                        $swatch.get(0).style.borderColor = color;
+                    },
+                    () => {
+                        $swatch.get(0).style.borderColor = 'white';
+                    });
+
+                $swatch.click(function () {
+                    colorHandler(color);
+                });
+
+                $swatch.on('touchend', function () {
+                    colorHandler(color);
+                });
+
+            }
+
+        }
+
+    };
+
+    const TrackScrollbar = function ($viewportContainer, viewports, rootDiv) {
+
+        const self = this;
+        let lastY;
+
+        const guid = igv.guid();
+        const namespace = '.trackscrollbar' + guid;
+        this.namespace = namespace;
+
+        const $outerScroll = $('<div class="igv-scrollbar-outer-div">');
+        this.$outerScroll = $outerScroll;
         this.$innerScroll = $('<div>');
 
         this.$outerScroll.append(this.$innerScroll);
@@ -687,71 +752,79 @@ var igv = (function (igv) {
         this.$viewportContainer = $viewportContainer;
         this.viewports = viewports;
 
-        this.$innerScroll.on("mousedown", function (event) {
-
-            event.preventDefault();
-
-            offY = event.pageY - $(this).position().top;
-
-            $(window).on(self.mouseHandlers.window.move, mouseMove);
-
-            $(window).on(self.mouseHandlers.window.up, mouseUp);
-
-            // <= prevents start of horizontal track panning)
-            event.stopPropagation();
-        });
+        this.$innerScroll.on("mousedown", mouseDown);
 
         this.$innerScroll.on("click", function (event) {
             event.stopPropagation();
         });
 
         this.$outerScroll.on("click", function (event) {
-            moveScrollerTo(event.offsetY - self.$innerScroll.height() / 2);
+            self.moveScrollerBy(event.offsetY - self.$innerScroll.height() / 2);
             event.stopPropagation();
 
         });
 
-        function mouseMove(event) {
+        function mouseDown(event) {
 
             event.preventDefault();
-            moveScrollerTo(event.pageY - offY);
+
+            const page = igv.pageCoordinates(event);
+
+            lastY = page.y;
+
+            $(document).on('mousemove' + namespace, mouseMove);
+            $(document).on('mouseup' + namespace, mouseUp);
+            $(document).on('mouseleave' + namespace, mouseUp);
+
+            // prevents start of horizontal track panning)
             event.stopPropagation();
         }
 
+        function mouseMove(event) {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const page = igv.pageCoordinates(event);
+            self.moveScrollerBy(page.y - lastY);
+            lastY = page.y;
+
+        }
+
         function mouseUp(event) {
-            $(window).off(self.mouseHandlers.window.up);
-            $(window).off(self.mouseHandlers.window.move);
+            $(document).off(self.namespace);
         }
 
-        function moveScrollerTo(y) {
-
-            var newTop,
-                contentTop,
-                contentDivHeight,
-                outerScrollHeight,
-                innerScrollHeight;
-
-            outerScrollHeight = self.$outerScroll.height();
-            innerScrollHeight = self.$innerScroll.height();
-
-            newTop = Math.min(Math.max(0, y), outerScrollHeight - innerScrollHeight);
-
-            contentDivHeight = maxContentHeight(viewports);
-
-            contentTop = -Math.round(newTop * ( contentDivHeight / self.$viewportContainer.height() ));
-
-            self.$innerScroll.css("top", newTop + "px");
-
-            viewports.forEach(function (viewport) {
-                $(viewport.contentDiv).css("top", contentTop + "px");
-            });
-
-        }
     };
 
+    TrackScrollbar.prototype.moveScrollerBy = function (delta) {
+
+        const y = this.$innerScroll.position().top + delta;
+        this.moveScrollerTo(y);
+
+    }
+
+    TrackScrollbar.prototype.moveScrollerTo = function (y) {
+
+
+        const outerScrollHeight = this.$outerScroll.height();
+        const innerScrollHeight = this.$innerScroll.height();
+
+        const newTop = Math.min(Math.max(0, y), outerScrollHeight - innerScrollHeight);
+
+        const contentDivHeight = maxContentHeight(this.viewports);
+        const contentTop = -Math.round(newTop * (contentDivHeight / this.$viewportContainer.height()));
+
+        this.$innerScroll.css("top", newTop + "px");
+
+        this.viewports.forEach(function (viewport) {
+            $(viewport.contentDiv).css("top", contentTop + "px");
+        });
+
+    }
+
     TrackScrollbar.prototype.dispose = function () {
-        $(window).off(this.mouseHandlers.window.up);
-        $(window).off(this.mouseHandlers.window.move);
+        $(window).off(this.namespace);
     };
 
     TrackScrollbar.prototype.update = function () {

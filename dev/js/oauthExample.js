@@ -5,9 +5,14 @@
 
 function initClient() {
 
-    var scope = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/genomics https://www.googleapis.com/auth/devstorage.read_only https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.readonly";
+    var scope =
+        "https://www.googleapis.com/auth/cloud-platform " +
+        "https://www.googleapis.com/auth/genomics " +
+        "https://www.googleapis.com/auth/devstorage.read_only " +
+        "https://www.googleapis.com/auth/userinfo.profile " +
+        "https://www.googleapis.com/auth/drive.readonly";
 
-    igv.Google.loadGoogleProperties("https://s3.amazonaws.com/igv.org.app/web_client_google")
+    igv.google.loadGoogleProperties("https://s3.amazonaws.com/igv.org.app/web_client_google")
 
         .then(function (properties) {
 
@@ -40,14 +45,7 @@ function initClient() {
 
                 genome: "hg19",
                 locus: 'myc',
-                apiKey: igv.Google.properties["api_key"],
-                tracks: [
-                    {
-                        url: "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
-                        name: "Genes",
-                        order: 10000
-                    }
-                ]
+                apiKey: igv.google.properties["api_key"],
             };
 
             browser = igv.createBrowser(div, options);
@@ -62,8 +60,10 @@ function initClient() {
 
     function updateSigninStatus(isSignedIn) {
 
-        var user = gapi.auth2.getAuthInstance().currentUser.get();
-        igv.setGoogleOauthToken(user.getAuthResponse().access_token);
+        const user = gapi.auth2.getAuthInstance().currentUser.get();
+        const token = user.getAuthResponse().access_token;
+        igv.oauth.google.setToken(token);
+       // igv.oauth.setToken(token, "*googleapis*");
     }
 
 }
@@ -73,7 +73,8 @@ function signOut() {
 
     var auth2 = gapi.auth2.getAuthInstance();
     auth2.signOut().then(function () {
-        igv.setGoogleOauthToken(undefined);
+        igv.oauth.google.removeToken();
+        //igv.oauth.removeToken("*googleapis*");
         console.log('User signed out.');
     });
 }
@@ -92,10 +93,10 @@ function createPicker() {
 
                 picker = new google.picker
                     .PickerBuilder()
-                    .setAppId(igv.Google.properties["project_number"])
+                    .setAppId(igv.google.properties["project_number"])
                     .setOAuthToken(igv.oauth.google.access_token)
                     .addView(view)
-                    .setDeveloperKey(igv.Google.properties["developer_key"])
+                    .setDeveloperKey(igv.google.properties["developer_key"])
                     .setCallback(pickerCallback)
                     .build();
 

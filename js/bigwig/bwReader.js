@@ -27,6 +27,7 @@
  * Created by jrobinso on 4/7/14.
  */
 
+"use strict";
 
 var igv = (function (igv) {
 
@@ -52,7 +53,7 @@ var igv = (function (igv) {
 
         const self = this;
         const genome = this.genome;
-        
+
         return self.getZoomHeaders()
             .then(function (zoomLevelHeaders) {
                 var chrIdx1, chrIdx2, chr1, chr2;
@@ -72,8 +73,7 @@ var igv = (function (igv) {
         var self = this,
             decodeFunction,
             chrIdx1,
-            chrIdx2,
-            bufferedReader = new igv.BufferedReader(self.config);
+            chrIdx2;
 
         return self.getZoomHeaders()
 
@@ -113,58 +113,63 @@ var igv = (function (igv) {
 
             .then(function (leafItems) {
 
-                var promises = [];
 
                 if (!leafItems || leafItems.length == 0) {
                     return [];
                 }
                 else {
-                    leafItems.forEach(function (item) {
 
-                        promises.push(
-                            bufferedReader.dataViewForRange({
-                                start: item.dataOffset,
-                                size: item.dataSize
-                            }, true)
-                                .then(function (uint8Array) {
-                                    let plain;
-                                    const isCompressed = self.header.uncompressBuffSize > 0
-                                    if(isCompressed) {
-                                        var inflate = new Zlib.Inflate(uint8Array);
-                                        plain = inflate.decompress();
-                                    }
-                                    else {
-                                        plain = uint8Array;
-                                    }
+                    // Consolidate leaf items and get all data at once
+                    let start = Number.MAX_VALUE;
+                    let end = 0;
+                    for (let item of leafItems) {
+                        start = Math.min(start, item.dataOffset);
+                        end = Math.max(end, item.dataOffset + item.dataSize);
+                    }
+                    ;
 
-                                    var features = [];
-                                    decodeFunction(new DataView(plain.buffer), chrIdx1, bpStart, chrIdx2, bpEnd, features, self.chromTree.idToChrom, windowFunction);
-                                    return features;
-                                })
-                        )
-                    });
+                    const size = end - start;
 
-                    return Promise.all(promises);
+                    return igv.xhr.loadArrayBuffer(self.config.url, igv.buildOptions(self.config, {
+                        range: {
+                            start: start,
+                            size: size
+                        }
+                    }))
+
+                        .then(function (arrayBuffer) {
+
+                            const allFeatures = [];
+
+                            const buffer = new Uint8Array(arrayBuffer);
+
+                            for (let item of leafItems) {
+
+                                const uint8Array = buffer.subarray(item.dataOffset - start, item.dataOffset + item.dataSize);
+
+                                let plain;
+                                const isCompressed = self.header.uncompressBuffSize > 0;
+                                if (isCompressed) {
+                                    const inflate = new Zlib.Inflate(uint8Array);
+                                    plain = inflate.decompress();
+                                }
+                                else {
+                                    plain = uint8Array;
+                                }
+
+                                decodeFunction(new DataView(plain.buffer), chrIdx1, bpStart, chrIdx2, bpEnd, allFeatures, self.chromTree.idToChrom, windowFunction);
+                            }
+
+                            allFeatures.sort(function (a, b) {
+                                return a.start - b.start;
+                            })
+
+                            return allFeatures;
+
+                        })
                 }
             })
 
-            .then(function (featureArrays) {
-
-                var i, allFeatures = [];
-
-
-                allFeatures = allFeatures.concat.apply(allFeatures, featureArrays);
-
-                // for (i = 0; i < featureArrays.length; i++) {
-                //     allFeatures = allFeatures.concat(featureArrays[i]);
-                // }
-
-                allFeatures.sort(function (a, b) {
-                    return a.start - b.start;
-                });
-
-                return allFeatures;
-            })
     }
 
     igv.BWReader.prototype.getZoomHeaders = function () {
@@ -188,7 +193,7 @@ var igv = (function (igv) {
         var self = this;
 
         if (self.header) {
-            return Promise.resolve(header);
+            return Promise.resolve(self.header);
         }
         else {
             return igv.xhr.loadArrayBuffer(self.path, igv.buildOptions(self.config, {
@@ -262,8 +267,8 @@ var igv = (function (igv) {
 
         function loadZoomHeadersAndChrTree() {
 
-            var startOffset = BBFILE_HEADER_SIZE,
-                self = this;
+            const self = this;
+            const startOffset = BBFILE_HEADER_SIZE;
 
             var range = {start: startOffset, size: (self.header.fullDataOffset - startOffset + 5)};
 
@@ -271,19 +276,15 @@ var igv = (function (igv) {
 
                 .then(function (data) {
 
-                    var nZooms = self.header.nZoomLevels,
-                        binaryParser = new igv.BinaryParser(new DataView(data)),
-                        i,
-                        len,
-                        zoomNumber,
-                        zlh;
+                    const nZooms = self.header.nZoomLevels;
+                    const binaryParser = new igv.BinaryParser(new DataView(data));
 
                     self.zoomLevelHeaders = [];
 
                     self.firstZoomDataOffset = Number.MAX_VALUE;
-                    for (i = 1; i <= nZooms; i++) {
-                        zoomNumber = nZooms - i;
-                        zlh = new ZoomLevelHeader(zoomNumber, binaryParser);
+                    for (let i = 1; i <= nZooms; i++) {
+                        const zoomNumber = nZooms - i;
+                        const zlh = new ZoomLevelHeader(zoomNumber, binaryParser);
                         self.firstZoomDataOffset = Math.min(zlh.dataOffset, self.firstZoomDataOffset);
                         self.zoomLevelHeaders[zoomNumber] = zlh;
                     }
@@ -307,6 +308,7 @@ var igv = (function (igv) {
                     }
                     else {
                         // TODO -- this is an error, not expected
+                        throw "BigWig chromosome tree offset <= 0";
                     }
 
                     //Finally total data count
@@ -329,7 +331,7 @@ var igv = (function (igv) {
             return Promise.resolve(rpTree);
         }
         else {
-            rpTree = new RPTree(offset, self.contentLength, self.config, self.littleEndian);
+            rpTree = new RPTree(offset, self.config, self.littleEndian);
             return rpTree.load()
                 .then(function () {
                     self.rpTreeCache[offset] = rpTree;
@@ -347,10 +349,9 @@ var igv = (function (igv) {
 
     }
 
-    function RPTree(fileOffset, contentLength, config, littleEndian) {
+    function RPTree(fileOffset, config, littleEndian) {
 
         this.config = config;
-        this.filesize = contentLength;
         this.fileOffset = fileOffset; // File offset to beginning of tree
         this.path = config.url;
         this.littleEndian = littleEndian;
@@ -361,7 +362,7 @@ var igv = (function (igv) {
         var self = this;
 
         var rootNodeOffset = self.fileOffset + RPTREE_HEADER_SIZE,
-            bufferedReader = new igv.BufferedReader(self.config, self.filesize, BUFFER_SIZE);
+            bufferedReader = new igv.BufferedReader(self.config,  BUFFER_SIZE);
 
         return self.readNode(rootNodeOffset, bufferedReader)
 
@@ -447,7 +448,7 @@ var igv = (function (igv) {
 
             var leafItems = [],
                 processing = new Set(),
-                bufferedReader = new igv.BufferedReader(self.config, self.filesize, BUFFER_SIZE);
+                bufferedReader = new igv.BufferedReader(self.config, BUFFER_SIZE);
 
             processing.add(0);  // Zero represents the root node
             findLeafItems(self.rootNode, 0);
@@ -721,7 +722,7 @@ var igv = (function (igv) {
                 }
 
                 if (chromId < chrIdx1 || (chromId === chrIdx1 && chromEnd < bpStart)) continue;
-                else if (chromId > chrIdx2 || (chromId === chrIdx2 && chromStart >= bpEnd))  break;
+                else if (chromId > chrIdx2 || (chromId === chrIdx2 && chromStart >= bpEnd)) break;
 
                 if (Number.isFinite(value)) {
                     chr = chrDict[chromId];
@@ -756,7 +757,7 @@ var igv = (function (igv) {
             rest = binaryParser.getString();
 
             if (chromId < chrIdx1 || (chromId === chrIdx1 && chromEnd < bpStart)) continue;
-            else if (chromId > chrIdx2 || (chromId === chrIdx2 && chromStart >= bpEnd))  break;
+            else if (chromId > chrIdx2 || (chromId === chrIdx2 && chromStart >= bpEnd)) break;
 
 
             feature = {chr: chr, start: chromStart, end: chromEnd};
@@ -844,7 +845,7 @@ var igv = (function (igv) {
             }
 
             if (chromId < chrIdx1 || (chromId === chrIdx1 && chromEnd < bpStart)) continue;
-            else if (chromId > chrIdx2 || (chromId === chrIdx2 && chromStart >= bpEnd))  break;
+            else if (chromId > chrIdx2 || (chromId === chrIdx2 && chromStart >= bpEnd)) break;
 
 
             if (Number.isFinite(value)) {

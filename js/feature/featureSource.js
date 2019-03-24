@@ -43,7 +43,6 @@ var igv = (function (igv) {
         this.sourceType = (config.sourceType === undefined ? "file" : config.sourceType);
 
         if (config.features && Array.isArray(config.features)) {
-
             let features = config.features;
             if (config.mappings) {
                 mapProperties(features, config.mappings)
@@ -51,7 +50,6 @@ var igv = (function (igv) {
             this.queryable = false;
             this.featureCache = new igv.FeatureCache(features, genome);
             this.static = true;
-
         }
         else if (config.sourceType === "ga4gh") {
             this.reader = new igv.Ga4ghVariantReader(config, genome);
@@ -72,6 +70,10 @@ var igv = (function (igv) {
             this.reader = new igv.CustomServiceReader(config.source);
             this.queryable = config.source.queryable !== undefined ? config.source.queryable : true;
         }
+        else if ("civic-ws" === config.sourceType) {
+            this.reader = new igv.CivicReader(config);
+            this.queryable = false;
+        }
         else {
             this.reader = new igv.FeatureFileReader(config, genome);
             if (config.queryable != undefined) {
@@ -88,11 +90,15 @@ var igv = (function (igv) {
 
     };
 
+    igv.FeatureSource.prototype.supportsWholeGenome = function () {
+        return !this.queryable;
+    }
+
     igv.FeatureSource.prototype.getFileHeader = function () {
 
         const self = this;
         const genome = this.genome;
-        const    maxRows = this.config.maxRows || 500;
+        const maxRows = this.config.maxRows || 500;
 
 
         if (self.header) {
@@ -171,7 +177,9 @@ var igv = (function (igv) {
     igv.FeatureSource.prototype.getFeatures = function (chr, bpStart, bpEnd, bpPerPixel, visibilityWindow) {
 
         const self = this;
+        const reader = this.reader;
         const genome = this.genome;
+        const supportWholeGenome = this.config.supportWholeGenome;
         const queryChr = genome ? genome.getChromosomeName(chr) : chr;
         const maxRows = self.config.maxRows || 500;
 
@@ -182,13 +190,11 @@ var igv = (function (igv) {
                 const isQueryable = self.queryable;
 
                 if ("all" === chr.toLowerCase()) {
-                    if (isQueryable) {
+                    if (isQueryable) {    // Strange test -- what it really means is are we querying for specific regions
                         return [];
                     }
                     else {
-                        const wgFeatureCache = self.getWGFeatureCache(featureCache.getAllFeatures());
-                        return wgFeatureCache.queryFeatures("all", bpStart, bpEnd);
-
+                        return self.getWGFeatures(featureCache.getAllFeatures());
                     }
                 }
                 else {
@@ -214,29 +220,27 @@ var igv = (function (igv) {
             }
             else {
 
-                // If a visibility window is defined, expand query interval
-
-                if (-1 !== visibilityWindow) {
-                    if (visibilityWindow <= 0) {
-                        // Whole chromosome
-                        intervalStart = 0;
-                        intervalEnd = Number.MAX_VALUE;
-                    }
-                    else {
-                        if (visibilityWindow > (bpEnd - bpStart)) {
-                            intervalStart = Math.max(0, (bpStart + bpEnd - visibilityWindow) / 2);
-                            intervalEnd = bpStart + visibilityWindow;
-                        }
-                    }
-                    genomicInterval = new igv.GenomicInterval(queryChr, intervalStart, intervalEnd);
+                // If a visibility window is defined, potentially expand query interval.
+                // This can save re-queries as we zoom out.  Visibility window <= 0 is a special case
+                // indicating whole chromosome should be read at once.
+                if (visibilityWindow <= 0) {
+                    // Whole chromosome
+                    intervalStart = 0;
+                    intervalEnd = Number.MAX_VALUE;
                 }
+                else if (visibilityWindow > (bpEnd - bpStart)) {
+                    const expansionWindow = Math.min(4.1 * (bpEnd - bpStart), visibilityWindow)
+                    intervalStart = Math.max(0, (bpStart + bpEnd - expansionWindow) / 2);
+                    intervalEnd = bpStart + expansionWindow;
+                }
+                genomicInterval = new igv.GenomicInterval(queryChr, intervalStart, intervalEnd);
 
 
-                return self.reader.readFeatures(queryChr, genomicInterval.start, genomicInterval.end)
+                return reader.readFeatures(queryChr, genomicInterval.start, genomicInterval.end)
 
                     .then(function (featureList) {
 
-                        if (self.queryable === undefined) self.queryable = self.reader.indexed;
+                        if (self.queryable === undefined) self.queryable = reader.indexed;
 
                         if (featureList) {
 
@@ -337,35 +341,40 @@ var igv = (function (igv) {
     }
 
     // TODO -- filter by pixel size
-    igv.FeatureSource.prototype.getWGFeatureCache = function (features) {
+    igv.FeatureSource.prototype.getWGFeatures = function (features) {
 
         const genome = this.genome;
-        
-        if (!this.wgFeatureCache) {
 
-            const wgChromosomeNames = new Set(genome.wgChromosomeNames);
+        const wgChromosomeNames = new Set(genome.wgChromosomeNames);
 
-            const wgFeatures = [];
+        const wgFeatures = [];
 
-            features.forEach(function (f) {
+        for (let f of features) {
 
-                let queryChr = genome.getChromosomeName(f.chr);
+            let queryChr = genome.getChromosomeName(f.chr);
 
-                if (wgChromosomeNames.has(queryChr)) {
+            if (wgChromosomeNames.has(queryChr)) {
 
-                    let wg = Object.assign({}, f);
-                    wg.chr = "all";
-                    wg.start = genome.getGenomeCoordinate(f.chr, f.start);
-                    wg.end = genome.getGenomeCoordinate(f.chr, f.end);
+                const wg = Object.create(Object.getPrototypeOf(f));
+                Object.assign(wg, f);
 
-                    wgFeatures.push(wg);
-                }
-            });
+                wg.chr = "all";
+                wg.start = genome.getGenomeCoordinate(f.chr, f.start);
+                wg.end = genome.getGenomeCoordinate(f.chr, f.end);
 
-            this.wgFeatureCache = new igv.FeatureCache(wgFeatures, genome);
+                // Don't draw exons in whole genome view
+                if(wg["exons"]) delete wg["exons"]
+
+                wgFeatures.push(wg);
+            }
         }
 
-        return this.wgFeatureCache;
+        wgFeatures.sort(function (a, b) {
+            return a.start - b.start;
+        });
+
+        return wgFeatures;
+
     }
 
 

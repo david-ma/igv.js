@@ -23,24 +23,22 @@
  * THE SOFTWARE.
  */
 
+"use strict";
+
 var igv = (function (igv) {
 
-    var BAM_MAGIC = 21840194;
-    var BAI_MAGIC = 21578050;
-    var SECRET_DECODER = ['=', 'A', 'C', 'x', 'G', 'x', 'x', 'x', 'T', 'x', 'x', 'x', 'x', 'x', 'x', 'N'];
-    var CIGAR_DECODER = ['M', 'I', 'D', 'N', 'S', 'H', 'P', '=', 'X', '?', '?', '?', '?', '?', '?', '?'];
-    var READ_PAIRED_FLAG = 0x1;
-    var PROPER_PAIR_FLAG = 0x2;
-    var READ_UNMAPPED_FLAG = 0x4;
-    var MATE_UNMAPPED_FLAG = 0x8;
-    var READ_STRAND_FLAG = 0x10;
-    var MATE_STRAND_FLAG = 0x20;
-    var FIRST_OF_PAIR_FLAG = 0x40;
-    var SECOND_OF_PAIR_FLAG = 0x80;
-    var SECONDARY_ALIGNMNET_FLAG = 0x100;
-    var READ_FAILS_VENDOR_QUALITY_CHECK_FLAG = 0x200;
-    var DUPLICATE_READ_FLAG = 0x400;
-    var SUPPLEMENTARY_ALIGNMENT_FLAG = 0x800;
+    const READ_PAIRED_FLAG = 0x1;
+    const PROPER_PAIR_FLAG = 0x2;
+    const READ_UNMAPPED_FLAG = 0x4;
+    const MATE_UNMAPPED_FLAG = 0x8;
+    const READ_STRAND_FLAG = 0x10;
+    const MATE_STRAND_FLAG = 0x20;
+    const FIRST_OF_PAIR_FLAG = 0x40;
+    const SECOND_OF_PAIR_FLAG = 0x80;
+    const SECONDARY_ALIGNMNET_FLAG = 0x100;
+    const READ_FAILS_VENDOR_QUALITY_CHECK_FLAG = 0x200;
+    const DUPLICATE_READ_FLAG = 0x400;
+    const SUPPLEMENTARY_ALIGNMENT_FLAG = 0x800;
 
     /**
      * readName
@@ -60,51 +58,51 @@ var igv = (function (igv) {
     }
 
     igv.BamAlignment.prototype.isMapped = function () {
-        return (this.flags & READ_UNMAPPED_FLAG) == 0;
+        return (this.flags & READ_UNMAPPED_FLAG) === 0;
     }
 
     igv.BamAlignment.prototype.isPaired = function () {
-        return (this.flags & READ_PAIRED_FLAG) != 0;
+        return (this.flags & READ_PAIRED_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isProperPair = function () {
-        return (this.flags & PROPER_PAIR_FLAG) != 0;
+        return (this.flags & PROPER_PAIR_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isFirstOfPair = function () {
-        return (this.flags & FIRST_OF_PAIR_FLAG) != 0;
+        return (this.flags & FIRST_OF_PAIR_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isSecondOfPair = function () {
-        return (this.flags & SECOND_OF_PAIR_FLAG) != 0;
+        return (this.flags & SECOND_OF_PAIR_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isSecondary = function () {
-        return (this.flags & SECONDARY_ALIGNMNET_FLAG) != 0;
+        return (this.flags & SECONDARY_ALIGNMNET_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isSupplementary = function () {
-        return (this.flags & SUPPLEMENTARY_ALIGNMENT_FLAG) != 0;
+        return (this.flags & SUPPLEMENTARY_ALIGNMENT_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isFailsVendorQualityCheck = function () {
-        return (this.flags & READ_FAILS_VENDOR_QUALITY_CHECK_FLAG) != 0;
+        return (this.flags & READ_FAILS_VENDOR_QUALITY_CHECK_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isDuplicate = function () {
-        return (this.flags & DUPLICATE_READ_FLAG) != 0;
+        return (this.flags & DUPLICATE_READ_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isMateMapped = function () {
-        return (this.flags & MATE_UNMAPPED_FLAG) == 0;
+        return (this.flags & MATE_UNMAPPED_FLAG) === 0;
     }
 
     igv.BamAlignment.prototype.isNegativeStrand = function () {
-        return (this.flags & READ_STRAND_FLAG) != 0;
+        return (this.flags & READ_STRAND_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.isMateNegativeStrand = function () {
-        return (this.flags & MATE_STRAND_FLAG) != 0;
+        return (this.flags & MATE_STRAND_FLAG) !== 0;
     }
 
     igv.BamAlignment.prototype.tags = function () {
@@ -173,18 +171,19 @@ var igv = (function (igv) {
 
         // if the user clicks on a base next to an insertion, show just the
         // inserted bases in a popup (like in desktop IGV).
-        var nameValues = [],
-            isFirst,
-            tagDict;
+        const nameValues = [];
 
         // Consert genomic location to int
         genomicLocation = Math.floor(genomicLocation);
 
         if (this.insertions) {
-            for (var i = 0; i < this.insertions.length; i += 1) {
-                var ins_start = this.insertions[i].start;
+
+            const seq = this.seq;
+
+            for(let insertion of this.insertions) {
+                var ins_start = insertion.start;
                 if (genomicLocation === ins_start || genomicLocation === ins_start - 1) {
-                    nameValues.push({name: 'Insertion', value: this.insertions[i].seq});
+                    nameValues.push({name: 'Insertion', value:  seq.substr(insertion.seqOffset, insertion.len)});
                     nameValues.push({name: 'Location', value: ins_start});
                     return nameValues;
                 }
@@ -199,7 +198,6 @@ var igv = (function (igv) {
 
         // Add 1 to genomic location to map from 0-based computer units to user-based units
         nameValues.push({name: 'Alignment Start', value: igv.numberFormatter(1 + this.start), borderTop: true});
-
         nameValues.push({name: 'Read Strand', value: (true === this.strand ? '(+)' : '(-)'), borderTop: true});
         nameValues.push({name: 'Cigar', value: this.cigar});
         nameValues.push({name: 'Mapped', value: yesNo(this.isMapped())});
@@ -231,9 +229,10 @@ var igv = (function (igv) {
         }
 
         nameValues.push("<hr>");
-        tagDict = this.tags();
-        isFirst = true;
-        for (var key in tagDict) {
+
+        const tagDict = this.tags();
+        let isFirst = true;
+        for (let key in tagDict) {
 
             if (tagDict.hasOwnProperty(key)) {
 
@@ -250,6 +249,7 @@ var igv = (function (igv) {
         nameValues.push("<hr>");
         nameValues.push({name: 'Genomic Location: ', value: igv.numberFormatter(1 + genomicLocation)});
         nameValues.push({name: 'Read Base:', value: this.readBaseAt(genomicLocation)});
+        nameValues.push({name: 'Base Quality:', value: this.readBaseQualityAt(genomicLocation)});
 
         return nameValues;
 
@@ -265,24 +265,51 @@ var igv = (function (igv) {
         const block = blockAtGenomicLocation(this.blocks, genomicLocation);
 
         if (block) {
-            return block.baseAt(genomicLocation);
+
+            if ("*" === this.seq) {
+                return "*";
+            } else {
+                const idx = block.seqIndexAt(genomicLocation);
+               // if (idx >= 0 && idx < this.seq.length) {
+                    return this.seq[idx];
+              //  }
+            }
+        }
+        else {
+            return undefined;
+        }
+    }
+
+    igv.BamAlignment.prototype.readBaseQualityAt = function (genomicLocation) {
+
+        const block = blockAtGenomicLocation(this.blocks, genomicLocation);
+
+        if (block) {
+            if ("*" === this.qual) {
+                return 30;
+            } else {
+                const idx = block.seqIndexAt(genomicLocation);
+              //  if (idx >= 0 && idx < this.qual.length) {
+                    return this.qual[idx];
+              //  }
+            }
         }
         else {
             return undefined;
         }
 
-        function blockAtGenomicLocation(blocks, genomicLocation) {
-
-            for (let i = 0; i < blocks.length; i++) {
-                const block = blocks[i];
-                if (genomicLocation >= block.start && genomicLocation <= block.start + block.len) {
-                    return block;
-                }
-            }
-            return undefined;
-        }
     }
 
+    function blockAtGenomicLocation(blocks, genomicLocation) {
+
+        for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            if (genomicLocation >= block.start && genomicLocation < block.start + block.len) {
+                return block;
+            }
+        }
+        return undefined;
+    }
 
     function readInt(ba, offset) {
         return (ba[offset + 3] << 24) | (ba[offset + 2] << 16) | (ba[offset + 1] << 8) | (ba[offset]);

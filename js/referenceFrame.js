@@ -32,7 +32,7 @@ var igv = (function (igv) {
         this.genome = genome;
         this.chrName = chrName;
         this.start = start;
-        this.end = end;                 // TODO WARNING THIS IS NOT UPDATED !!!
+        this.initialEnd = end;                 // TODO WARNING THIS IS NOT UPDATED !!!
         this.bpPerPixel = bpPerPixel;
     };
 
@@ -51,7 +51,6 @@ var igv = (function (igv) {
     };
 
     igv.ReferenceFrame.prototype.toPixels = function (bp) {
-        // TODO -- do we really need ot round this?
         return bp / this.bpPerPixel;
     };
 
@@ -60,14 +59,20 @@ var igv = (function (igv) {
     };
 
     igv.ReferenceFrame.prototype.shiftPixels = function (pixels, viewportWidth) {
-        this.start += pixels * this.bpPerPixel;
 
+        this.start += pixels * this.bpPerPixel;
+        this.clamp(viewportWidth);
+
+    };
+
+    igv.ReferenceFrame.prototype.clamp = function (viewportWidth) {
         // clamp left
-        this.start = Math.max(0, this.start);
+        const min = this.genome.getChromosome(this.chrName).bpStart || 0
+        this.start = Math.max(min, this.start);
 
         // clamp right
         if (viewportWidth) {
-        
+
             var chromosome = this.genome.getChromosome(this.chrName);
             var maxEnd = chromosome.bpLength;
             var maxStart = maxEnd - (viewportWidth * this.bpPerPixel);
@@ -76,17 +81,19 @@ var igv = (function (igv) {
                 this.start = maxStart;
             }
         }
-    };
+    }
+
+    igv.ReferenceFrame.prototype.getChromosome = function () {
+        return this.genome.getChromosome(this.chrName)
+    }
 
     igv.ReferenceFrame.prototype.showLocus = function (pixels) {
-        var ss,
-            ee;
 
         if ('all' === this.chrName.toLowerCase()) {
             return this.chrName.toLowerCase();
         } else {
-            ss = igv.numberFormatter(Math.round(this.start));
-            ee = igv.numberFormatter(Math.round(this.start + this.bpPerPixel * pixels));
+            const ss = igv.numberFormatter(Math.floor(this.start) + 1);
+            const ee = igv.numberFormatter(Math.round(this.start + this.bpPerPixel * pixels));
             return this.chrName + ':' + ss + '-' + ee;
         }
     };

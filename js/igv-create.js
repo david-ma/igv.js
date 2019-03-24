@@ -43,10 +43,13 @@ var igv = (function (igv) {
 
         if (undefined === config) config = {};
 
+        // Path to genomes.json file.   This is globally shared among all browser objects
+        igv.GenomeUtils.genomeList = config.genomeList || "https://s3.amazonaws.com/igv.org.genomes/genomes.json";
+
         setDefaults(config);
 
         // Explicit parameters have priority
-        if (config.queryParametersSupported) {
+        if (config.queryParametersSupported !== false) {
             extractQuery(config);
         }
 
@@ -82,15 +85,54 @@ var igv = (function (igv) {
         browser.dataRangeDialog = new igv.DataRangeDialog(browser.$root, browser);
 
         if (config.apiKey) {
-            igv.setGoogleApiKey(config.apiKey);
+            igv.google.setApiKey(config.apiKey);
         }
 
         if (config.oauthToken) {
-            igv.setOauthToken(config.oauthToken);
+            igv.oauth.setToken(config.oauthToken);
         }
 
+        return loadSession(config)
 
-        return doPromiseChain(browser, config)
+            .then(function (ignore) {
+
+                if (false === config.showTrackLabels) {
+                    browser.hideTrackLabels();
+                } else {
+                    browser.showTrackLabels();
+                    if (browser.trackLabelControl) {
+                        browser.trackLabelControl.setState(browser.trackLabelsVisible);
+                    }
+                }
+
+                if (false === config.showCursorTrackingGuide) {
+                    browser.cursorGuide.doHide();
+                } else {
+                    browser.cursorGuide.doShow();
+                }
+
+                if (false === config.showCenterGuide) {
+                    browser.centerGuide.doHide();
+                } else {
+                    browser.centerGuide.doShow();
+                }
+
+                const isWGV = browser.isMultiLocusWholeGenomeView() || igv.isWholeGenomeView(browser.genomicStateList[0].referenceFrame);
+
+                // multi-locus mode or isWGV
+                if (browser.isMultiLocusMode() || isWGV) {
+                    browser.centerGuide.forcedHide();
+                } else {
+                    browser.centerGuide.forcedShow();
+                }
+
+                igv.xhr.startup();
+
+                browser.navbarManager.navbarDidResize(browser.$navigation.width(), isWGV);
+
+                return browser;
+            })
+
             .then(function (browser) {
 
                 allBrowsers.push(browser);
@@ -102,6 +144,18 @@ var igv = (function (igv) {
 
                 return browser;
             })
+
+
+        function loadSession(config) {
+            if(config.sessionURL) {
+                return browser.loadSession({
+                    url: config.sessionURL
+                })
+            }
+            else {
+                return browser.loadSessionObject(config)
+            }
+        }
 
     };
 
@@ -119,70 +173,10 @@ var igv = (function (igv) {
 
     }
 
-    function doPromiseChain(browser, config) {
-
-        return browser.loadSession(config.sessionURL, config)
-
-            .then(function (ignore) {
-
-                if (false === config.showTrackLabels) {
-
-                    browser.hideTrackLabels();
-
-                } else {
-
-                    browser.showTrackLabels();
-
-                    if (browser.trackLabelControl) {
-                        browser.trackLabelControl.setState(browser.trackLabelsVisible);
-                    }
-                }
-
-                if (false === config.showCursorTrackingGuide) {
-
-                    browser.hideCursorGuide();
-
-                } else {
-
-                    browser.showCursorGuide();
-                    browser.cursorGuide.setState(browser.cursorGuideVisible);
-
-                }
-
-                if (false === config.showCenterGuide) {
-
-                    browser.hideCenterGuide();
-
-                } else {
-
-                    browser.showCenterGuide();
-                    browser.centerGuide.setState(browser.centerGuideVisible);
-
-                }
-
-                // multi-locus mode
-                if (browser.genomicStateList.length > 1) {
-
-                    // TODO: This is temporary until implement multi-locus center guides
-                    browser.centerGuide.disable();
-
-                }
-                // whole-genome
-                else if ('all' === browser.genomicStateList[0].locusSearchString) {
-                    browser.centerGuide.disable();
-                    browser.disableZoomWidget();
-                }
-
-                return browser;
-            })
-
-    }
-
 
     /**
      * This function provided so clients can inform igv of a visibility change, typically when an igv instance is
-     * made visible from a tab, accordion, or similar widget.   There are no events to catch for this case,
-     * igv has to be told.
+     * made visible from a tab, accordion, or similar widget.
      */
     igv.visibilityChange = function () {
         allBrowsers.forEach(function (browser) {
@@ -190,27 +184,6 @@ var igv = (function (igv) {
         })
     }
 
-    //@deprecated -- user setGoogleApiKey
-    igv.setApiKey = function (key) {
-        igv.oauth.google.apiKey = key;
-    }
-
-    igv.setGoogleApiKey = function (key) {
-        igv.oauth.google.apiKey = key;
-    }
-
-    //@deprecated -- use setGoogleOauthToken
-    igv.setOauthToken = function (token) {
-        igv.oauth.google.access_token = token;
-    }
-
-    igv.setGoogleOauthToken = function (token) {
-        igv.oauth.google.access_token = token;
-    }
-
-    igv.getGoogleOauthToken = function () {
-        return igv.oauth.google.access_token;
-    }
 
     function setTrackOrder(conf) {
 
@@ -251,7 +224,6 @@ var igv = (function (igv) {
             logoDiv,
             logoSvg,
             $controls,
-            $karyo,
             $navigation,
             $searchContainer,
             $faSearch;
@@ -261,6 +233,7 @@ var igv = (function (igv) {
         $navigation = $('<div>', {class: 'igv-navbar'});
         $controls.append($navigation);
         browser.$navigation = $navigation;
+        browser.navbarManager = new igv.NavbarManager(browser);
 
         $igv_nav_bar_left_container = $('<div>', {class: 'igv-nav-bar-left-container'});
         $navigation.append($igv_nav_bar_left_container);
@@ -274,17 +247,17 @@ var igv = (function (igv) {
         $igv_nav_bar_left_container.append(logoDiv);
 
         // current genome
-        browser.$current_genome = $('<div>', {class: 'igv-current_genome'});
+        browser.$current_genome = $('<div>', {class: 'igv-current-genome'});
         $igv_nav_bar_left_container.append(browser.$current_genome);
         browser.$current_genome.text('');
 
         //
-        $genomic_location = $('<div>', {class: 'igv-genomic-location'});
+        $genomic_location = $('<div>', {class: 'igv-nav-bar-genomic-location'});
         $igv_nav_bar_left_container.append($genomic_location);
 
         // chromosome select widget
         browser.chromosomeSelectWidget = new igv.ChromosomeSelectWidget(browser, $genomic_location);
-        if(undefined === config.showChromosomeWidget) {
+        if (undefined === config.showChromosomeWidget) {
             config.showChromosomeWidget = true;   // Default to true
         }
         if (true === config.showChromosomeWidget) {
@@ -314,14 +287,18 @@ var igv = (function (igv) {
                 });
         });
 
-        // search icon
-        $div = $('<i>');
+        // search icon container
+        $div = $('<div>');
         $searchContainer.append($div);
+
+        // search icon svg
         $div.append(igv.createIcon("search"));
+
         $div.click(function () {
             browser.search(browser.$searchInput.val());
         });
-        $searchContainer.append($faSearch);
+
+        // $searchContainer.append($faSearch);
 
         // TODO: Currently not used
         // search results presented in table
@@ -342,6 +319,7 @@ var igv = (function (igv) {
 
         $toggle_button_container = $('<div class="igv-nav-bar-toggle-button-container">');
         $igv_nav_bar_right_container.append($toggle_button_container);
+        browser.$toggle_button_container = $toggle_button_container;
 
         // cursor guide
         browser.cursorGuide = new igv.CursorGuide($(browser.trackContainerDiv), $toggle_button_container, config, browser);
@@ -355,13 +333,7 @@ var igv = (function (igv) {
         }
 
         // zoom widget
-        zoomWidget(browser, $igv_nav_bar_right_container);
-
-        // $karyo = $('#igvKaryoDiv');
-        // if (undefined === $karyo.get(0)) {
-        //     $karyo = $('<div id="igvKaryoDiv" class="igv-karyo-div">');
-        //     $controls.append($karyo);
-        // }
+        browser.zoomWidget = new igv.ZoomWidget(browser, $igv_nav_bar_right_container);
 
         if (false === config.showNavigation) {
             browser.$navigation.hide();
@@ -370,36 +342,6 @@ var igv = (function (igv) {
         return $controls.get(0);
     }
 
-    function zoomWidget(browser, $parent) {
-
-        var $div,
-            $fa;
-
-        browser.$zoomContainer = $('<div class="igv-zoom-widget">');
-
-        browser.$zoomContainer.css("font-size", "20px");    // TODO -- could be done in style sheet.
-
-        $parent.append(browser.$zoomContainer);
-
-        // zoom out
-        $div = $('<i>');
-        browser.$zoomContainer.append($div);
-        $fa = igv.createIcon("minus-circle");
-        $div.append($fa);
-        $div.on('click', function () {
-            browser.zoomOut();
-        });
-
-        // zoom in
-        $div = $('<i>');
-        browser.$zoomContainer.append($div);
-        $fa = igv.createIcon("plus-circle");
-        $div.append($fa);
-        $div.on('click', function () {
-            browser.zoomIn();
-        });
-
-    }
 
     function setDefaults(config) {
 
@@ -423,28 +365,24 @@ var igv = (function (igv) {
             config.showCursorTrackingGuideButton = true;
         }
 
-        if (undefined === config.showCursorTrackingGuide) {
-            config.showCursorTrackingGuide = false;
-        }
-
         if (undefined === config.showCenterGuideButton) {
             config.showCenterGuideButton = true;
-        }
-
-        if (undefined === config.showCenterGuide) {
-            config.showCenterGuide = false;
         }
 
         if (undefined === config.showTrackLabelButton) {
             config.showTrackLabelButton = true;
         }
 
-        if (undefined === config.showTrackLabels) {
-            config.showTrackLabels = true;
+        if (undefined === config.showCursorTrackingGuide) {
+            config.showCursorTrackingGuide = false;
         }
 
-        if (undefined === config.showKaryo) {
-            config.showKaryo = false;
+        if (undefined === config.showCenterGuide) {
+            config.showCenterGuide = false;
+        }
+
+        if (undefined === config.showTrackLabels) {
+            config.showTrackLabels = true;
         }
 
         if (config.showControls === undefined) {

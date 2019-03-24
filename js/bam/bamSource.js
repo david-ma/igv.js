@@ -22,12 +22,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+"use strict";
 
 var igv = (function (igv) {
 
-    "use strict";
 
-    igv.BamSource = function (config, genome) {
+    igv.BamSource = function (config, browser) {
+
+        const genome = browser.genome;
 
         this.config = config;
         this.genome = genome;
@@ -49,7 +51,10 @@ var igv = (function (igv) {
             this.bamReader = new igv.HtsgetReader(config, genome);
         } else if ("shardedBam" === config.sourceType) {
             this.bamReader = new igv.ShardedBamReader(config, genome);
-        } else {
+        } else if ("cram" === config.format) {
+            this.bamReader = new igv.CramReader(config, genome, browser);
+        }
+        else {
             if (this.config.indexed === false) {
                 this.bamReader = new igv.BamReaderNonIndexed(config, genome);
             }
@@ -59,6 +64,7 @@ var igv = (function (igv) {
         }
 
         this.viewAsPairs = config.viewAsPairs;
+        this.showSoftClips = config.showSoftClips;
     };
 
     igv.BamSource.prototype.setViewAsPairs = function (bool) {
@@ -81,62 +87,87 @@ var igv = (function (igv) {
 
             }
         }
+
     };
 
-    igv.BamSource.prototype.getAlignments = function (chr, bpStart, bpEnd) {
+    igv.BamSource.prototype.setShowSoftClips = function (bool) {
+
+        if (this.showSoftClips !== bool) {
+
+            this.showSoftClips = bool;
+
+            if (this.alignmentContainer) {
+                const alignments = allAlignments(this.alignmentContainer.packedAlignmentRows);
+                const alignmentContainer = this.alignmentContainer;
+                alignmentContainer.packedAlignmentRows = packAlignmentRows(alignments, alignmentContainer.start, alignmentContainer.end, this.maxRows, bool);
+
+            }
+        }
+
+        function allAlignments(rows) {
+            let result = [];
+            for (let row of rows) {
+                for (let alignment of row.alignments) {
+                    result.push(alignment);
+                }
+            }
+            return result;
+        }
+    }
+
+    igv.BamSource.prototype.getAlignments = async function (chr, bpStart, bpEnd) {
 
         const self = this;
         const genome = this.genome;
-
+        const showSoftClips = this.showSoftClips;
 
         if (self.alignmentContainer && self.alignmentContainer.contains(chr, bpStart, bpEnd)) {
-            
-            return Promise.resolve(self.alignmentContainer);
-            
+
+            return self.alignmentContainer;
+
         } else {
-            
-            return self.bamReader.readAlignments(chr, bpStart, bpEnd)
 
-                .then(function (alignmentContainer) {
+            const alignmentContainer = await self.bamReader.readAlignments(chr, bpStart, bpEnd)
 
-                    const maxRows = self.config.maxRows || 500;
-                     let   alignments = alignmentContainer.alignments;
+            const maxRows = self.config.maxRows || 500;
+            let alignments = alignmentContainer.alignments;
 
-                    if (!self.viewAsPairs) {
-                        alignments = unpairAlignments([{alignments: alignments}]);
-                    }
+            if (!self.viewAsPairs) {
+                alignments = unpairAlignments([{alignments: alignments}]);
+            }
 
-                    const hasAlignments = alignments.length > 0;
+            const hasAlignments = alignments.length > 0;
 
-                    alignmentContainer.packedAlignmentRows = packAlignmentRows(alignments, alignmentContainer.start, alignmentContainer.end, maxRows);
+            alignmentContainer.packedAlignmentRows = packAlignmentRows(alignments, alignmentContainer.start, alignmentContainer.end, maxRows, showSoftClips);
 
-                    alignmentContainer.alignments = undefined;  // Don't need to hold onto these anymore
+            alignmentContainer.alignments = undefined;  // Don't need to hold onto these anymore
 
-                    self.alignmentContainer = alignmentContainer;
-                    
-                    if (!hasAlignments) {
-                        
-                        return alignmentContainer;
-                        
-                    }
-                    else {
-                        
-                        return genome.sequence.getSequence(chr, alignmentContainer.start, alignmentContainer.end)
+            self.alignmentContainer = alignmentContainer;
 
-                            .then(function (sequence) {
+            if (!hasAlignments) {
 
-                                if (sequence) {
+                return alignmentContainer;
 
-                                    alignmentContainer.coverageMap.refSeq = sequence;    // TODO -- fix this
-                                    alignmentContainer.sequence = sequence;           // TODO -- fix this
+            }
+            else {
 
+                const sequence = await genome.sequence.getSequence(chr, alignmentContainer.start, alignmentContainer.end)
 
-                                    return alignmentContainer;
-                                }
-                            })
-                    }
-                })
+                if (sequence) {
+
+                    alignmentContainer.coverageMap.refSeq = sequence;    // TODO -- fix this
+                    alignmentContainer.sequence = sequence;           // TODO -- fix this
+
+                    return alignmentContainer;
+                }
+                else {
+                    console.error("No sequence for: " + chr + ":" + alignmentContainer.start + "-" + alignmentContainer.end)
+                }
+
+            }
+
         }
+
     }
 
     function pairAlignments(rows) {
@@ -196,7 +227,7 @@ var igv = (function (igv) {
             (alignment.isFirstOfPair() || alignment.isSecondOfPair()) && !(alignment.isSecondary() || alignment.isSupplementary());
     }
 
-    function packAlignmentRows(alignments, start, end, maxRows) {
+    function packAlignmentRows(alignments, start, end, maxRows, showSoftClips) {
 
         if (!alignments) return;
 
@@ -213,21 +244,25 @@ var igv = (function (igv) {
                 index,
                 bucket,
                 alignment,
-                alignmentSpace = 4 * 2,
+                alignmentSpace = 8,
                 packedAlignmentRows = [],
                 bucketStart;
 
 
             alignments.sort(function (a, b) {
-                return a.start - b.start;
+                return showSoftClips ? a.scStart - b.scStart : a.start - b.start;
             });
 
-            bucketStart = Math.max(start, alignments[0].start);
+            // bucketStart = Math.max(start, alignments[0].start);
+            const firstAlignment = alignments[0];
+            bucketStart = Math.max(start, showSoftClips ? firstAlignment.scStart : firstAlignment.start);
             nextStart = bucketStart;
 
             alignments.forEach(function (alignment) {
 
-                var buckListIndex = Math.max(0, alignment.start - bucketStart);
+                //var buckListIndex = Math.max(0, alignment.start - bucketStart);
+                const s = showSoftClips ? alignment.scStart : alignment.start;
+                var buckListIndex = Math.max(0, s - bucketStart);
                 if (bucketList[buckListIndex] === undefined) {
                     bucketList[buckListIndex] = [];
                 }
@@ -263,7 +298,10 @@ var igv = (function (igv) {
                     }
 
                     alignmentRow.alignments.push(alignment);
-                    nextStart = alignment.start + alignment.lengthOnRef + alignmentSpace;
+
+                    nextStart = showSoftClips ?
+                        alignment.scStart + alignment.scLengthOnRef + alignmentSpace :
+                        alignment.start + alignment.lengthOnRef + alignmentSpace;
                     ++allocatedCount;
 
                 } // while (nextStart)
@@ -283,6 +321,7 @@ var igv = (function (igv) {
             return packedAlignmentRows;
         }
     }
+
 
     return igv;
 

@@ -43,6 +43,10 @@ var igv = (function (igv) {
             }
         }
         this.withCredentials = reference.withCredentials;
+        this.chromosomeNames = [];
+        this.chromosomes = {};
+        this.sequences = {};
+        this.offsets = {};
         this.config = buildConfig(reference);
 
     };
@@ -64,21 +68,8 @@ var igv = (function (igv) {
 
         if (self.indexed) {
 
-            return new Promise(function (fulfill, reject) {
+            return self.getIndex()
 
-                self.getIndex().then(function (index) {
-                    var order = 0;
-                    self.chromosomes = {};
-                    self.chromosomeNames.forEach(function (chrName) {
-                        var bpLength = self.index[chrName].size;
-                        self.chromosomes[chrName] = new igv.Chromosome(chrName, order++, bpLength);
-                    });
-
-
-                    // Ignore index, getting chr names as a side effect.  Really bad practice
-                    fulfill();
-                }).catch(reject);
-            });
         }
         else {
             return self.loadAll();
@@ -87,56 +78,49 @@ var igv = (function (igv) {
     }
 
     igv.FastaSequence.prototype.getSequence = function (chr, start, end) {
-        
         if (this.indexed) {
             return getSequenceIndexed.call(this, chr, start, end);
         }
         else {
-            return getSequenceNonIndexed.call(this, chr, start, end);
-
+            return getSequenceNonIndexed.call(this, chr, start, end)
         }
-
     }
 
     function getSequenceIndexed(chr, start, end) {
 
         var self = this;
 
-        return new Promise(function (fulfill, reject) {
-            var interval = self.interval;
+        var interval = self.interval;
 
-            if (interval && interval.contains(chr, start, end)) {
-
-                fulfill(getSequenceFromInterval(interval, start, end));
+        if (interval && interval.contains(chr, start, end)) {
+            return Promise.resolve(getSequenceFromInterval(interval, start, end));
+        }
+        else {
+            // Expand query, to minimum of 50kb
+            var qstart = start;
+            var qend = end;
+            if ((end - start) < 50000) {
+                var w = (end - start);
+                var center = Math.round(start + w / 2);
+                qstart = Math.max(0, center - 25000);
+                qend = center + 25000;
             }
-            else {
 
-                //console.log("Cache miss: " + (interval === undefined ? "nil" : interval.chr + ":" + interval.start + "-" + interval.end));
+            return self.readSequence(chr, qstart, qend)
 
-                // Expand query, to minimum of 100kb
-                var qstart = start;
-                var qend = end;
-                if ((end - start) < 100000) {
-                    var w = (end - start);
-                    var center = Math.round(start + w / 2);
-                    qstart = Math.max(0, center - 50000);
-                    qend = center + 50000;
-                }
-
-
-                self.readSequence(chr, qstart, qend).then(function (seqBytes) {
+                .then(function (seqBytes) {
                     self.interval = new igv.GenomicInterval(chr, qstart, qend, seqBytes);
-                    fulfill(getSequenceFromInterval(self.interval, start, end));
-                }).catch(reject);
-            }
+                    return getSequenceFromInterval(self.interval, start, end);
+                })
+        }
 
-            function getSequenceFromInterval(interval, start, end) {
-                var offset = start - interval.start;
-                var n = end - start;
-                var seq = interval.features ? interval.features.substr(offset, n) : null;
-                return seq;
-            }
-        });
+        function getSequenceFromInterval(interval, start, end) {
+            var offset = start - interval.start;
+            var n = end - start;
+            var seq = interval.features ? interval.features.substr(offset, n) : null;
+            return seq;
+        }
+
     }
 
 
@@ -144,64 +128,72 @@ var igv = (function (igv) {
 
         var self = this;
 
-        var seq = self.sequences[chr];
-        if (seq && seq.length >= end) {
-            return Promise.resolve(seq.substring(start, end));
-        } else {
-            return Promise.resolve("");
+        if (this.offsets[chr]) {
+            start -= this.offsets[chr];
+            end -= this.offsets[chr];
+        }
+        let prefix = "";
+        if (start < 0) {
+            for (let i = start; i < Math.min(end, 0); i++) {
+                prefix += "*";
+            }
         }
 
+        if (end <= 0) {
+            return Promise.resolve(prefix);
+        }
 
+        var seq = self.sequences[chr];
+        const seqEnd = Math.min(end, seq.length)
+        return Promise.resolve(prefix + seq.substring(start, end));
     }
 
     igv.FastaSequence.prototype.getIndex = function () {
 
-        var self = this;
+        if (this.index) {
+            return Promise.resolve(this.index);
+        } else {
+            const self = this;
+            return igv.xhr.load(self.indexFile, igv.buildOptions(self.config))
 
-        return new Promise(function (fulfill, reject) {
+                .then(function (data) {
 
-            if (self.index) {
-                fulfill(self.index);
-            } else {
-                igv.xhr.load(self.indexFile, igv.buildOptions(self.config))
-                    .then(function (data) {
-                        var lines = igv.splitLines(data);
-                        var len = lines.length;
-                        var lineNo = 0;
+                    const lines = igv.splitLines(data);
+                    const len = lines.length;
+                    let lineNo = 0;
+                    let order = 0;
+                    self.index = {};
 
-                        self.chromosomeNames = [];     // TODO -- eliminate this side effect !!!!
-                        self.index = {};               // TODO -- ditto
-                        while (lineNo < len) {
+                    while (lineNo < len) {
+                        var tokens = lines[lineNo++].split("\t");
+                        var nTokens = tokens.length;
 
-                            var tokens = lines[lineNo++].split("\t");
-                            var nTokens = tokens.length;
-                            if (nTokens == 5) {
-                                // Parse the index line.
-                                var chr = tokens[0];
-                                var size = parseInt(tokens[1]);
-                                var position = parseInt(tokens[2]);
-                                var basesPerLine = parseInt(tokens[3]);
-                                var bytesPerLine = parseInt(tokens[4]);
+                        if (nTokens == 5) {
+                            // Parse the index line.
+                            var chr = tokens[0];
+                            var size = parseInt(tokens[1]);
+                            var position = parseInt(tokens[2]);
+                            var basesPerLine = parseInt(tokens[3]);
+                            var bytesPerLine = parseInt(tokens[4]);
 
-                                var indexEntry = {
-                                    size: size,
-                                    position: position,
-                                    basesPerLine: basesPerLine,
-                                    bytesPerLine: bytesPerLine
-                                };
+                            var indexEntry = {
+                                size: size,
+                                position: position,
+                                basesPerLine: basesPerLine,
+                                bytesPerLine: bytesPerLine
+                            };
 
-                                self.chromosomeNames.push(chr);
-                                self.index[chr] = indexEntry;
-                            }
+                            self.chromosomeNames.push(chr);
+                            self.index[chr] = indexEntry;
+                            self.chromosomes[chr] = new igv.Chromosome(chr, order++, 0, size);
                         }
+                    }
 
-                        if (fulfill) {
-                            fulfill(self.index);
-                        }
-                    })
-                    .catch(reject);
-            }
-        });
+                    return self.index;
+
+                })
+        }
+
     }
 
     igv.FastaSequence.prototype.loadAll = function () {
@@ -211,14 +203,11 @@ var igv = (function (igv) {
         if (this.isDataURI) {
             return Promise.resolve(parseFasta(this.file));
         } else {
-            return igv.xhr.load(self.file, igv.buildOptions(self.config)).then(parseFasta)
+            return igv.xhr.load(self.file, igv.buildOptions(self.config))
+                .then(parseFasta)
         }
 
         function parseFasta(data) {
-
-            self.chromosomeNames = [];
-            self.chromosomes = {};
-            self.sequences = {};
 
             var lines = igv.splitLines(data),
                 len = lines.length,
@@ -226,6 +215,8 @@ var igv = (function (igv) {
                 nextLine,
                 currentSeq = "",
                 currentChr,
+                currentRangeLocus = undefined,
+                currentOffset = 0,
                 order = 0;
 
 
@@ -238,10 +229,31 @@ var igv = (function (igv) {
                     if (currentSeq) {
                         self.chromosomeNames.push(currentChr);
                         self.sequences[currentChr] = currentSeq;
-                        self.chromosomes[currentChr] = new igv.Chromosome(currentChr, order++, currentSeq.length);
+                        self.chromosomes[currentChr] = new igv.Chromosome(currentChr, order++, currentOffset, currentOffset + currentSeq.length, currentRangeLocus);
                     }
-                    currentChr = nextLine.substr(1).split(/(\s+)/)[0];
+
+                    const parts = nextLine.substr(1).split(/\s+/)
+
+                    // Check for samtools style locus string.   This is not perfect, and could fail on weird sequence names
+                    const nameParts = parts[0].split(':')
+                    currentChr = nameParts[0];
                     currentSeq = "";
+                    currentOffset = 0
+                    currentRangeLocus = undefined;
+                    if (nameParts.length > 1 && nameParts[1].indexOf('-') > 0) {
+                        const locusParts = nameParts[1].split('-')
+                        if (locusParts.length === 2 &&
+                            /^[0-9]+$/.test(locusParts[0]) &&
+                            /^[0-9]+$/.test(locusParts[1])) {
+                        }
+                        const from = Number.parseInt(locusParts[0])
+                        const to = Number.parseInt(locusParts[1])
+                        if (to > from) {
+                            currentOffset = from - 1;
+                            self.offsets[currentChr] = currentOffset;
+                            currentRangeLocus = nameParts[1];
+                        }
+                    }
                 }
                 else {
                     currentSeq += nextLine;
@@ -251,7 +263,7 @@ var igv = (function (igv) {
             if (currentSeq) {
                 self.chromosomeNames.push(currentChr);
                 self.sequences[currentChr] = currentSeq;
-                self.chromosomes[currentChr] = new igv.Chromosome(currentChr, order++, currentSeq.length);
+                self.chromosomes[currentChr] = new igv.Chromosome(currentChr, order++, currentOffset, currentOffset + currentSeq.length, currentRangeLocus);
             }
         }
     }
@@ -259,10 +271,17 @@ var igv = (function (igv) {
     igv.FastaSequence.prototype.readSequence = function (chr, qstart, qend) {
 
         //console.log("Read sequence " + chr + ":" + qstart + "-" + qend);
-        var self = this;
+        const self = this;
 
-        return new Promise(function (fulfill, reject) {
-            self.getIndex().then(function () {
+        let offset;
+        let start;
+        let end;
+        let basesPerLine;
+        let nEndBytes;
+
+        return self.getIndex()
+
+            .then(function () {
 
                 var idxEntry = self.index[chr];
                 if (!idxEntry) {
@@ -270,63 +289,76 @@ var igv = (function (igv) {
 
                     // Tag interval with null so we don't try again
                     self.interval = new igv.GenomicInterval(chr, qstart, qend, null);
-                    fulfill(null);
+                    return null;
 
                 } else {
 
-                    var start = Math.max(0, qstart);    // qstart should never be < 0
-                    var end = Math.min(idxEntry.size, qend);
-                    var bytesPerLine = idxEntry.bytesPerLine;
-                    var basesPerLine = idxEntry.basesPerLine;
-                    var position = idxEntry.position;
-                    var nEndBytes = bytesPerLine - basesPerLine;
+                    start = Math.max(0, qstart);    // qstart should never be < 0
+                    end = Math.min(idxEntry.size, qend);
+                    const bytesPerLine = idxEntry.bytesPerLine;
+                    basesPerLine = idxEntry.basesPerLine;
+                    const position = idxEntry.position;
+                    nEndBytes = bytesPerLine - basesPerLine;
 
-                    var startLine = Math.floor(start / basesPerLine);
-                    var endLine = Math.floor(end / basesPerLine);
+                    const startLine = Math.floor(start / basesPerLine);
+                    const endLine = Math.floor(end / basesPerLine);
 
-                    var base0 = startLine * basesPerLine;   // Base at beginning of start line
+                    const base0 = startLine * basesPerLine;   // Base at beginning of start line
 
-                    var offset = start - base0;
+                    offset = start - base0;
 
-                    var startByte = position + startLine * bytesPerLine + offset;
+                    const startByte = position + startLine * bytesPerLine + offset;
 
-                    var base1 = endLine * basesPerLine;
-                    var offset1 = end - base1;
-                    var endByte = position + endLine * bytesPerLine + offset1 - 1;
-                    var byteCount = endByte - startByte + 1;
+                    const base1 = endLine * basesPerLine;
+                    const offset1 = end - base1;
+                    const endByte = position + endLine * bytesPerLine + offset1 - 1;
+                    const byteCount = endByte - startByte + 1;
+
+
                     if (byteCount <= 0) {
-                        fulfill(null);
+                        console.error("No sequence for " + chr + ":" + qstart + "-" + qend)
+                        return "";
+                    }
+                    else {
+                        return igv.xhr.load(self.file, igv.buildOptions(self.config, {
+                            range: {
+                                start: startByte,
+                                size: byteCount
+                            }
+                        }))
+                    }
+                }
+            })
+
+            .then(function (allBytes) {
+
+                if (!allBytes) {
+                    return null;
+                }
+                else {
+                    let nBases,
+                        seqBytes = "",
+                        srcPos = 0,
+                        desPos = 0,
+                        allBytesLength = allBytes.length;
+
+                    if (offset > 0) {
+                        nBases = Math.min(end - start, basesPerLine - offset);
+                        seqBytes += allBytes.substr(srcPos, nBases);
+                        srcPos += (nBases + nEndBytes);
+                        desPos += nBases;
                     }
 
-                    igv.xhr.load(self.file, igv.buildOptions(self.config, {range: {start: startByte, size: byteCount}}))
-                        .then(function (allBytes) {
+                    while (srcPos < allBytesLength) {
+                        nBases = Math.min(basesPerLine, allBytesLength - srcPos);
+                        seqBytes += allBytes.substr(srcPos, nBases);
+                        srcPos += (nBases + nEndBytes);
+                        desPos += nBases;
+                    }
 
-                            var nBases,
-                                seqBytes = "",
-                                srcPos = 0,
-                                desPos = 0,
-                                allBytesLength = allBytes.length;
-
-                            if (offset > 0) {
-                                nBases = Math.min(end - start, basesPerLine - offset);
-                                seqBytes += allBytes.substr(srcPos, nBases);
-                                srcPos += (nBases + nEndBytes);
-                                desPos += nBases;
-                            }
-
-                            while (srcPos < allBytesLength) {
-                                nBases = Math.min(basesPerLine, allBytesLength - srcPos);
-                                seqBytes += allBytes.substr(srcPos, nBases);
-                                srcPos += (nBases + nEndBytes);
-                                desPos += nBases;
-                            }
-
-                            fulfill(seqBytes);
-                        })
-                        .catch(reject)
+                    return seqBytes;
                 }
-            }).catch(reject)
-        });
+            })
     }
 
     function decodeDataUri(dataUri) {
