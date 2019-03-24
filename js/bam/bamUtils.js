@@ -45,7 +45,6 @@ var igv = (function (igv) {
     const DEFAULT_SAMPLING_WINDOW_SIZE = 100;
     const MAXIMUM_SAMPLING_DEPTH = 100000; // DKGM - Raising the maximum here because pmac people prefer to view more reads at the of risk crashing their browsers. I have provided appropriate dialog boxes to warn them of this when changing this setting.
     const DEFAULT_SAMPLING_DEPTH = 100;
-    const MAXIMUM_SAMPLING_DEPTH = 2500;
 
     igv.BamUtils = {
 
