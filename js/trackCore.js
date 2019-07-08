@@ -133,7 +133,7 @@ var igv = (function (igv) {
                 }
         }
 
-        if(config.roi && track) {
+        if (config.roi && track) {
             track.roi = [];
             config.roi.forEach(function (r) {
                 track.roi.push(new igv.ROI(r, browser.genome));
@@ -155,9 +155,12 @@ var igv = (function (igv) {
             if ("bed" === config.type) {
                 config.type = "annotation";
                 config.format = config.format || "bed";
-
+            } else if ("annotations" === config.type) {
+                config.type = "annotation"
             }
-
+            else if ("alignments" === config.type) {
+                config.type = "alignment"
+            }
             else if ("bam" === config.type) {
                 config.type = "alignment";
                 config.format = "bam"
@@ -259,9 +262,10 @@ var igv = (function (igv) {
         fn = fn.toLowerCase();
 
         // Special case -- UCSC refgene files
-        if (fn.endsWith("refgene.txt.gz") || fn.endsWith("refgene.txt")) {
+        if (fn.endsWith("refgene.txt.gz") ||
+            fn.endsWith("refgene.txt") ||
+            fn.endsWith("refgene.sorted.txt.gz")) {
             return "refgene";
-            return;
         }
 
 

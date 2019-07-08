@@ -30,14 +30,29 @@ var igv = (function (igv) {
     igv.setApiKey = function (key) {
         igv.google.setApiKey(key);
     }
-
     igv.google = {
 
         fileInfoCache: {},
 
         // Crude test, this is conservative, nothing bad happens for a false positive
         isGoogleURL: function (url) {
-            return (url.includes("googleapis") && !url.includes("urlshortener")) || (url.startsWith("gs://"));
+            return (url.includes("googleapis") && !url.includes("urlshortener")) ||
+                this.isGoogleCloudURL(url) ||
+                this.isGoogleStorageURL(url) ||
+                this.isGoogleDrive(url)
+        },
+
+        isGoogleStorageURL: function (url) {
+            return url.startsWith("https://www.googleapis.com/storage") ||
+                url.startsWith("https://storage.cloud.google.com")
+        },
+
+        isGoogleCloudURL: function (url) {
+            return url.startsWith("gs://")
+        },
+
+        isGoogleDrive: function (url) {
+            return url.indexOf("drive.google.com") >= 0 || url.indexOf("www.googleapis.com/drive") > 0
         },
 
         setApiKey: function (key) {
@@ -71,14 +86,10 @@ var igv = (function (igv) {
         },
 
         addApiKey: function (url) {
-
-            var apiKey = this.apiKey,
-                paramSeparator = url.includes("?") ? "&" : "?";
-
+            const apiKey = this.apiKey
             if (apiKey !== undefined && !url.includes("key=")) {
-                if (apiKey) {
-                    url = url + paramSeparator + "key=" + apiKey;
-                }
+                const paramSeparator = url.includes("?") ? "&" : "?"
+                url = url + paramSeparator + "key=" + apiKey;
             }
             return url;
         },
@@ -135,13 +146,11 @@ var igv = (function (igv) {
             i2 = link.indexOf("&");
             if (i1 > 0 && i2 > i1) {
                 return link.substring(i1, i2)
-            }
-            else if (i1 > 0) {
+            } else if (i1 > 0) {
                 return link.substring(i1);
             }
 
-        }
-        else if (link.includes("/file/d/")) {
+        } else if (link.includes("/file/d/")) {
             i1 = link.indexOf("/file/d/") + 8;
             i2 = link.lastIndexOf("/");
             return link.substring(i1, i2);

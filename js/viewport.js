@@ -27,12 +27,18 @@ var igv = (function (igv) {
         // viewport-content
         const $div = $("<div>", {class: 'igv-viewport-content-div'});
         this.$viewport.append($div);
+
+        // know the genomic state index
+        const index = this.browser.genomicStateList.indexOf(genomicState);
+        $div.data('genomicStateIndex', index);
+
         $div.height(this.$viewport.height());
         this.contentDiv = $div.get(0);
 
         // viewport canvas
         const $canvas = $('<canvas>');
         $(this.contentDiv).append($canvas);
+
         this.canvas = $canvas.get(0);
         this.ctx = this.canvas.getContext("2d");
 
@@ -77,7 +83,14 @@ var igv = (function (igv) {
             this.stopSpinner();
 
             if ("sequence" !== trackView.track.type) {
+
                 this.popover = new igv.Popover(self.browser.$content);
+
+                let str = trackView.track.name.toLowerCase().split(' ').join('_');
+                str = str + '_' + this.browser.genomicStateList.indexOf(this.genomicState);
+
+                this.popover.$popover.attr('id', str);
+
                 self.$zoomInNotice = createZoomInNotice.call(this, $(this.contentDiv));
             }
         }
@@ -654,16 +667,21 @@ var igv = (function (igv) {
     igv.Viewport.prototype.dispose = function () {
         const self = this;
 
-        this.$viewport.off();
-        this.$viewport.empty();
-        $(this.contentDiv).off();
-        $(this.contentDiv).empty();
+        if (this.popover) {
+            this.popover.$popover.off();
+            this.popover.$popover.empty();
+            this.popover.$popover.remove();
+        }
+
         $(this.canvas).off();
         $(this.canvas).empty();
-        if (this.popover) {
-            $(this.popover).off();
-            $(this.popover).empty();
-        }
+
+        $(this.contentDiv).off();
+        $(this.contentDiv).empty();
+
+        this.$viewport.off();
+        this.$viewport.empty();
+
         // Null out all properties -- this should not be neccessary, but just in case there is a
         // reference to self somewhere we want to free memory.
         Object.keys(this).forEach(function (key, i, list) {
@@ -938,8 +956,8 @@ var igv = (function (igv) {
             const popupClickHandlerResult = browser.fireEvent('trackclick', [track, dataList]);
 
             let content;
-            if (undefined === popupClickHandlerResult) {
-
+            if (undefined === popupClickHandlerResult || true === popupClickHandlerResult) {
+                // Indicates handler did not handle the result, or the handler wishes default behavior to occur
                 if (dataList && dataList.length > 0) {
                     content = formatPopoverText(dataList);
                 }

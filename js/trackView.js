@@ -80,7 +80,7 @@ var igv = (function (igv) {
         if (true === this.track.ignoreTrackMenu) {
             // do nothing
         } else {
-            appendRightHandGutter.call(this, $(this.trackDiv));
+            igv.appendRightHandGutter.call(this, $(this.trackDiv));
         }
 
         if (this.track instanceof igv.RulerTrack) {
@@ -190,33 +190,32 @@ var igv = (function (igv) {
         resizeControlCanvas.call(this, $leftHandGutter.outerWidth(), $leftHandGutter.outerHeight())
     }
 
-    function appendRightHandGutter($parent) {
+    igv.appendRightHandGutter = function ($parent) {
 
         let $div = $('<div class="igv-right-hand-gutter">');
         $parent.append($div);
 
-        createTrackGearPopover.call(this, $div);
-    }
+        igv.createTrackGearPopover.call(this, $div);
+    };
 
+    igv.createTrackGearPopover = function ($parent) {
 
-    function createTrackGearPopover($parent) {
-
-        let $cogContainer = $("<div>", { class:'igv-trackgear-container' });
+        let $cogContainer = $("<div>", {class: 'igv-trackgear-container'});
         $parent.append($cogContainer);
 
-        $cogContainer.append( igv.createIcon('cog') );
+        $cogContainer.append(igv.createIcon('cog'));
 
         this.trackGearPopover = new igv.TrackGearPopover($parent);
         this.trackGearPopover.$popover.hide();
 
         let self = this;
         $cogContainer.click(function (e) {
-            const page = igv.pageCoordinates(e);
-            // page.x, page.y
+            e.preventDefault();
+            e.stopPropagation();
             self.trackGearPopover.presentMenuList(-(self.trackGearPopover.$popover.width()), 0, igv.trackMenuItemList(self));
         });
 
-    }
+    };
 
     function resizeControlCanvas(width, height) {
 
@@ -438,11 +437,9 @@ var igv = (function (igv) {
     /**
      * Update viewports to reflect current genomic state, possibly loading additional data.
      */
-    igv.TrackView.prototype.updateViews = function (force) {
+    igv.TrackView.prototype.updateViews = async function (force) {
 
         if (!(this.browser && this.browser.genomicStateList)) return;
-
-        let self = this, promises, rpV, groupAutoscale;
 
         const visibleViewports = this.viewports.filter(vp => vp.isVisible())
 
@@ -450,79 +447,50 @@ var igv = (function (igv) {
             viewport.shift();
         });
 
-        let isDragging = this.browser.isDragging;
-
         // List of viewports that need reloading
-        rpV = viewportsToReload.call(this, force);
+        const rpV = viewportsToReload.call(this, force);
+        for (let vp of rpV) {
+            await vp.loadFeatures()
+        }
 
-        // promises = rpV.map(function (vp) {
-        //     return function () {
-        //         return vp.loadFeatures();
-        //     }
-        // });
-        // promiseSerial(promises)
-        //
-        //
-        promises = rpV.map(function (vp) {
-            return vp.loadFeatures();
-        })
+        const isDragging = this.browser.isDragging;
 
-        Promise.all(promises)
-            .then(function (tiles) {
+        if (!isDragging && this.track.autoscale) {
+            let allFeatures = [];
+            for(let vp of visibleViewports) {
+                const referenceFrame = vp.genomicState.referenceFrame;
+                const start = referenceFrame.start;
+                const end = start + referenceFrame.toBP($(vp.contentDiv).width());
 
-                if (!isDragging && self.track.autoscale) {
+                if (vp.tile && vp.tile.features) {
+                        allFeatures = allFeatures.concat(igv.FeatureUtils.findOverlapping(vp.tile.features, start, end));
 
-                    var allFeatures = [];
-                    visibleViewports.forEach(function (vp) {
-                        var referenceFrame, chr, start, end, cache;
-                        referenceFrame = vp.genomicState.referenceFrame;
-                        start = referenceFrame.start;
-                        end = start + referenceFrame.toBP($(vp.contentDiv).width());
-
-                        if (vp.tile && vp.tile.features) {
-                            if (self.track.autoscale) {
-                                allFeatures = allFeatures.concat(igv.FeatureUtils.findOverlapping(vp.tile.features, start, end));
-                            }
-                            else {
-                                allFeatures = allFeatures.concat(vp.tile.features);
-                            }
-                        }
-                    });
-
-                    if (typeof self.track.doAutoscale === 'function') {
-                        self.track.doAutoscale(allFeatures);
-                    } else {
-                        self.track.dataRange = igv.doAutoscale(allFeatures);
-                    }
                 }
+            }
+
+            if (typeof this.track.doAutoscale === 'function') {
+                this.track.doAutoscale(allFeatures);
+            } else {
+                this.track.dataRange = igv.doAutoscale(allFeatures);
+            }
+        }
 
 
-            })
-            .then(function (ignore) {
+        // Must repaint all viewports if autoscaling
+        if (!isDragging && (this.track.autoscale || this.track.autoscaleGroup)) {
+            for(let vp of visibleViewports) {
+                vp.repaint();
+            }
+        }
+        else {
+            for(let vp of rpV) {
+                vp.repaint();
+            }
+        }
 
-                // Must repaint all viewports if autoscaling
-                if (!isDragging && (self.track.autoscale || self.track.autoscaleGroup)) {
-                    visibleViewports.forEach(function (vp) {
-                        vp.repaint();
-                    })
-                }
-                else {
-                    rpV.forEach(function (vp) {
-                        vp.repaint();
-                    })
-                }
-            })
+        adjustTrackHeight.call(this);
 
-            .then(function (ignore) {
-                adjustTrackHeight.call(self);
-            })
-
-            .catch(function (error) {
-                console.error(error);
-                // TODO -- inform user,  remove track
-            })
-
-    };
+    }
 
     /**
      * Return a promise to get all in-view features.  Used for group autoscaling.
@@ -567,7 +535,7 @@ var igv = (function (igv) {
 
         // List of viewports that need reloading
         rpV = this.viewports.filter(function (viewport) {
-            if(!viewport.isVisible()) {
+            if (!viewport.isVisible()) {
                 return false
             }
             if (!viewport.checkZoomIn()) {
@@ -607,8 +575,8 @@ var igv = (function (igv) {
 
         if (this.scrollbar) {
             const currentTop = this.viewports[0].getContentTop();
-            const newTop =  Math.min(0, minContentHeight(this.viewports) - this.$viewportContainer.height());
-            if(currentTop < newTop) {
+            const newTop = Math.min(0, this.$viewportContainer.height() - minContentHeight(this.viewports));
+            if (currentTop < newTop) {
                 this.viewports.forEach(function (viewport) {
                     $(viewport.contentDiv).css("top", newTop + "px");
                 });
@@ -622,12 +590,12 @@ var igv = (function (igv) {
     }
 
     function maxContentHeight(viewports) {
-        const heights = viewports.map((viewport)  => viewport.getContentHeight());
+        const heights = viewports.map((viewport) => viewport.getContentHeight());
         return Math.max(...heights);
     }
 
     function minContentHeight(viewports) {
-        const heights = viewports.map((viewport)  => viewport.getContentHeight());
+        const heights = viewports.map((viewport) => viewport.getContentHeight());
         return Math.min(...heights);
     }
 
@@ -685,6 +653,7 @@ var igv = (function (igv) {
 
 
     igv.TrackView.prototype.scrollBy = function (delta) {
+        console.log("scrollby " + delta)
         this.scrollbar.moveScrollerBy(delta);
     };
 
@@ -692,7 +661,7 @@ var igv = (function (igv) {
 
         let appleColors = Object.values(igv.appleCrayonPalette);
 
-        if (defaultColor) {
+        if (defaultColor && !(typeof defaultColor === 'function')) {
 
             // Remove 'snow' color.
             appleColors.splice(11, 1);
@@ -720,11 +689,13 @@ var igv = (function (igv) {
                         $swatch.get(0).style.borderColor = 'white';
                     });
 
-                $swatch.click(function () {
+                $swatch.on('click.trackview', (event) => {
+                    event.stopPropagation();
                     colorHandler(color);
                 });
 
-                $swatch.on('touchend', function () {
+                $swatch.on('touchend.trackview', (event) => {
+                    event.stopPropagation();
                     colorHandler(color);
                 });
 

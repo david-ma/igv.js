@@ -16,14 +16,15 @@ function runGFFTests() {
             bpEnd = 10000,
             featureSource = new igv.FeatureSource({
                     url: 'data/gff/eden.gff',
-                    format: 'gff3'
+                    format: 'gff3',
+                    filterTypes: []
                 },
                 genome);
 
         featureSource.getFeatures(chr, bpStart, bpEnd).then(function (features) {
 
             assert.ok(features);
-            assert.equal(3, features.length);
+            assert.equal(5, features.length);
             assert.equal(chr, features[0].chr); // ensure features chromosome is specified chromosome
 
             done();

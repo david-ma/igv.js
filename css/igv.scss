@@ -19,7 +19,7 @@ $igv-navbar-toggle-dark-dark: #737373;
 $igv-navbar-button-height: 18px;
 $igv-navbar-button-width: 96px;
 $igv-navbar-button-font-size: 11px;
-
+$igv-navbar-button-border-radius: 6px;
 $igv-button-width: 75px;
 $igv-button-height: 28px;
 
@@ -142,8 +142,8 @@ $igv-trackgear-default-font-face: 'Open Sans', sans-serif;
 .igv-navbar {
 
   position: relative;
-  top: 0;
-  left: 0;
+  //top: 0;
+  //left: 0;
 
   padding-left: 8px;
   padding-right: 8px;
@@ -164,7 +164,7 @@ $igv-trackgear-default-font-face: 'Open Sans', sans-serif;
   margin-bottom: 4px;
 
   height: $igv-navbar-height;
-  width: 100%;
+  //width: 100%;
 
   border-style: solid;
   border-radius: 3px;
@@ -477,14 +477,23 @@ $igv-trackgear-default-font-face: 'Open Sans', sans-serif;
 
 // drag & drop file upload button
 .igv-nav-bar-button {
+
+  box-sizing: unset;
+
+  padding-left: 6px;
+  padding-right: 6px;
+
   height: $igv-navbar-button-height;
-  min-width: $igv-navbar-button-width;
+  //min-width: $igv-navbar-button-width;
   text-transform: capitalize;
 
   user-select: none;
 
   line-height: $igv-navbar-button-height;
+
   text-align: center;
+  vertical-align: middle;
+
   font-family: $igv-default-font-face;
   font-size: $igv-navbar-button-font-size;
   font-weight: 200;
@@ -495,7 +504,7 @@ $igv-trackgear-default-font-face: 'Open Sans', sans-serif;
   border-color: $igv-navbar-toggle-dark-dark;
   border-style: solid;
   border-width: thin;
-  border-radius: 10px;
+  border-radius: $igv-navbar-button-border-radius;
 }
 
 .igv-nav-bar-button-clicked {

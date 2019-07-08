@@ -243,21 +243,28 @@ var igv = (function (igv) {
                 let selectedFeature;
                 let lastPxEnd = [];
 
-                for (let gene of featureList) {
+                for (let feature of featureList) {
 
-                    if (gene.end < bpStart) continue;
-                    if (gene.start > bpEnd) break;
+                    if (feature.end < bpStart) continue;
+                    if (feature.start > bpEnd) break;
 
-                    if (!selectedFeature && selectedFeatureName && selectedFeatureName === gene.name.toUpperCase()) {
-                        selectedFeature = gene;
+                    if (!selectedFeature && selectedFeatureName && selectedFeatureName === feature.name.toUpperCase()) {
+                        selectedFeature = feature;
                     }
                     else {
-                        const row = this.displayMode === 'COLLAPSED' ? 0 : gene.row;
-                        const pxEnd = Math.ceil((gene.end - bpStart) / bpPerPixel);
+                        const row = this.displayMode === 'COLLAPSED' ? 0 : feature.row;
+                        const pxEnd = Math.ceil((feature.end - bpStart) / bpPerPixel);
                         const last = lastPxEnd[row];
                         if (!last || pxEnd > last) {
-                            self.render.call(this, gene, bpStart, bpPerPixel, pixelHeight, ctx, options);
+                            self.render.call(this, feature, bpStart, bpPerPixel, pixelHeight, ctx, options);
 
+                            // Ensure a visible gap between features
+                            const pxStart = Math.floor((feature.start - bpStart) / bpPerPixel)
+                            if (last && pxStart - last <= 0) {
+                                ctx.globalAlpha = 0.5
+                                igv.graphics.strokeLine(ctx, pxStart, 0, pxStart, pixelHeight, {'strokeStyle': "rgb(255, 255, 255)"})
+                                ctx.globalAlpha = 1.0
+                            }
                             lastPxEnd[row] = pxEnd;
                         }
                     }
@@ -360,7 +367,6 @@ var igv = (function (igv) {
                     {
                         object: igv.createCheckbox(lut[displayMode], displayMode === self.displayMode),
                         click: function () {
-                            self.browser.popover.hide();
                             self.displayMode = displayMode;
                             self.config.displayMode = displayMode;
                             self.trackView.checkContentHeight();
@@ -473,7 +479,7 @@ var igv = (function (igv) {
 
             let color = this.color;  // default
 
-            if(feature.alpha && feature.alpha !== 1) {
+            if (feature.alpha && feature.alpha !== 1) {
                 color = igv.Color.addAlpha(this.color, feature.alpha);
             }
 
@@ -510,17 +516,31 @@ var igv = (function (igv) {
 
             const exonCount = feature.exons ? feature.exons.length : 0;
             const coord = calculateFeatureCoordinates(feature, bpStart, xScale);
+            const step = this.arrowSpacing;
+            const direction = feature.strand === '+' ? 1 : feature.strand === '-' ? -1 : 0;
+
             if (exonCount === 0) {
                 // single-exon transcript
                 ctx.fillRect(coord.px, py, coord.pw, h);
 
+                // Arrows
+                // Do not draw if strand is not +/-
+                if (direction !== 0) {
+                    ctx.fillStyle = "white";
+                    ctx.strokeStyle = "white";
+                    for (let x = coord.px + step / 2; x < coord.px1; x += step) {
+                        // draw arrowheads along central line indicating transcribed orientation
+                        igv.graphics.strokeLine(ctx, x - direction * 2, cy - 2, x, cy);
+                        igv.graphics.strokeLine(ctx, x - direction * 2, cy + 2, x, cy);
+                    }
+                    ctx.fillStyle = color;
+                    ctx.strokeStyle = color;
+                }
             }
             else {
                 // multi-exon transcript
                 igv.graphics.strokeLine(ctx, coord.px + 1, cy, coord.px1 - 1, cy); // center line for introns
 
-                const direction = feature.strand === '+' ? 1 : -1;
-                const step = this.arrowSpacing;
                 const pixelWidth = options.pixelWidth;
 
                 const xLeft = Math.max(0, coord.px) + step / 2;
@@ -566,7 +586,7 @@ var igv = (function (igv) {
                         ctx.fillRect(ePx, py, ePw, h);
 
                         // Arrows
-                        if (ePw > step + 5) {
+                        if (ePw > step + 5 && direction !== 0) {
                             ctx.fillStyle = "white";
                             ctx.strokeStyle = "white";
                             for (let x = ePx + step / 2; x < ePx1; x += step) {
@@ -583,7 +603,8 @@ var igv = (function (igv) {
             }
 
             const windowX = Math.round(options.viewportContainerX);
-            const windowX1 = windowX + options.viewportContainerWidth / (browser.genomicStateList.length || 1);
+            const nLoci = browser.genomicStateList ? browser.genomicStateList.length : 1
+            const windowX1 = windowX + options.viewportContainerWidth / nLoci;
 
             renderFeatureLabels.call(this, ctx, feature, coord.px, coord.px1, py, windowX, windowX1, options.genomicState, options);
         }

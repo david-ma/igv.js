@@ -537,7 +537,7 @@ var igv = (function (igv) {
             // }
             // feature.id = id ? id : tmp;
             // feature.name = name ? name : tmp;
-            feature.name = name;
+            feature.name = tokens[3];
         }
 
         if (tokens.length > 4) {
@@ -562,17 +562,13 @@ var igv = (function (igv) {
             exonStarts = tokens[11].split(',');
             exons = [];
 
-            for (var i = 0; i < exonCount; i++) {
+            for (let i = 0; i < exonCount; i++) {
                 eStart = start + parseInt(exonStarts[i]);
                 eEnd = eStart + parseInt(exonSizes[i]);
-                var exon = {start: eStart, end: eEnd};
-
-                if (feature.cdStart > eEnd || feature.cdEnd < eStart) exon.utr = true;   // Entire exon is UTR
-                if (feature.cdStart >= eStart && feature.cdStart <= eEnd) exon.cdStart = feature.cdStart;
-                if (feature.cdEnd >= eStart && feature.cdEnd <= eEnd) exon.cdEnd = feature.cdEnd;
-
-                exons.push(exon);
+                exons.push({start: eStart, end: eEnd});
             }
+
+            findUTRs(exons, feature.cdStart, feature.cdEnd)
 
             feature.exons = exons;
         }
@@ -655,14 +651,16 @@ var igv = (function (igv) {
 
         if (tokens.length < 9 + shift) return undefined;
 
+        const cdStart = parseInt(tokens[5 + shift])
+        const cdEnd = parseInt(tokens[6 + shift])
         var feature = {
                 name: tokens[0 + shift],
                 chr: tokens[1 + shift],
                 strand: tokens[2 + shift],
                 start: parseInt(tokens[3 + shift]),
                 end: parseInt(tokens[4 + shift]),
-                cdStart: parseInt(tokens[5 + shift]),
-                cdEnd: parseInt(tokens[6 + shift]),
+                cdStart: cdStart,
+                cdEnd: cdEnd,
                 id: tokens[0 + shift]
             },
             exonCount = parseInt(tokens[7 + shift]),
@@ -670,9 +668,12 @@ var igv = (function (igv) {
             exonEnds = tokens[9 + shift].split(','),
             exons = [];
 
-        for (var i = 0; i < exonCount; i++) {
-            exons.push({start: parseInt(exonStarts[i]), end: parseInt(exonEnds[i])});
+        for (let i = 0; i < exonCount; i++) {
+            const start = parseInt(exonStarts[i])
+            const end = parseInt(exonEnds[i])
+            exons.push({start: start, end: end});
         }
+        findUTRs(exons, cdStart, cdEnd)
 
         feature.exons = exons;
 
@@ -693,14 +694,16 @@ var igv = (function (igv) {
 
         if (tokens.length < 11 + shift) return undefined;
 
-        var feature = {
+        const cdStart = parseInt(tokens[5 + shift])
+        const cdEnd = parseInt(tokens[6 + shift])
+        const feature = {
                 name: tokens[11 + shift],
                 chr: tokens[1 + shift],
                 strand: tokens[2 + shift],
                 start: parseInt(tokens[3 + shift]),
                 end: parseInt(tokens[4 + shift]),
-                cdStart: parseInt(tokens[5 + shift]),
-                cdEnd: parseInt(tokens[6 + shift]),
+                cdStart: cdStart,
+                cdEnd: cdEnd,
                 id: tokens[0 + shift]
             },
             exonCount = parseInt(tokens[7 + shift]),
@@ -708,14 +711,16 @@ var igv = (function (igv) {
             exonEnds = tokens[9 + shift].split(','),
             exons = [];
 
-        for (var i = 0; i < exonCount; i++) {
-            exons.push({start: parseInt(exonStarts[i]), end: parseInt(exonEnds[i])});
+        for (let i = 0; i < exonCount; i++) {
+            const start = parseInt(exonStarts[i])
+            const end = parseInt(exonEnds[i])
+            exons.push({start: start, end: end});
         }
+        findUTRs(exons, cdStart, cdEnd)
 
         feature.exons = exons;
 
         return feature;
-
     }
 
     /**
@@ -730,6 +735,8 @@ var igv = (function (igv) {
 
         if (tokens.length < 10 + shift) return undefined;
 
+        const cdStart = parseInt(tokens[6 + shift])
+        const cdEnd = parseInt(tokens[7 + shift])
         var feature = {
                 name: tokens[0 + shift],
                 id: tokens[1 + shift],
@@ -737,21 +744,42 @@ var igv = (function (igv) {
                 strand: tokens[3 + shift],
                 start: parseInt(tokens[4 + shift]),
                 end: parseInt(tokens[5 + shift]),
-                cdStart: parseInt(tokens[6 + shift]),
-                cdEnd: parseInt(tokens[7 + shift])
+                cdStart: cdStart,
+                cdEnd: cdEnd
             },
             exonCount = parseInt(tokens[8 + shift]),
             exonStarts = tokens[9 + shift].split(','),
             exonEnds = tokens[10 + shift].split(','),
             exons = [];
 
-        for (var i = 0; i < exonCount; i++) {
-            exons.push({start: parseInt(exonStarts[i]), end: parseInt(exonEnds[i])});
+        for (let i = 0; i < exonCount; i++) {
+            const start = parseInt(exonStarts[i])
+            const end = parseInt(exonEnds[i])
+            exons.push({start: start, end: end});
         }
+        findUTRs(exons, cdStart, cdEnd)
 
         feature.exons = exons;
 
         return feature;
+    }
+
+    function findUTRs(exons, cdStart, cdEnd) {
+
+        for(let exon of exons) {
+            const end = exon.end
+            const start = exon.start
+            if (end < cdStart || start > cdEnd) {
+                exon.utr = true;
+            } else {
+                if (cdStart >= start && cdStart <= end) {
+                    exon.cdStart = cdStart
+                }
+                if(cdEnd >= start && cdEnd <= end) {
+                    exon.cdEnd = cdEnd
+                }
+            }
+        }
 
     }
 
@@ -914,29 +942,29 @@ var igv = (function (igv) {
 
     }
 
+
     function decodeGtexGWAS(tokens, ignore) {
+        //chrom	chromStart	chromEnd	Strongest SNP-risk allele	Disease/Phenotype	P-value	Odds ratio or beta	PUBMEDID
+        //1	1247493	1247494	rs12103-A	Inflammatory bowel disease	8.00E-13	1.1	23128233
 
-
-        var tokenCount, chr, start, end, strand, name, score, qValue, signal, pValue;
-
-        tokenCount = tokens.length;
-        if (tokenCount < 8) {
+        const tokenCount = tokens.length;
+        if (tokenCount < 7) {
             return null;
         }
-
-        chr = tokens[0];
-        start = parseInt(tokens[1]) - 1;
-        end = parseInt(tokens[3].split(':')[1]);
-        //name = tokens[3];
-        //score = parseFloat(tokens[4]);
-        //strand = tokens[5].trim();
-        //signal = parseFloat(tokens[6]);
-        pValue = parseFloat(tokens[5]);
-        //qValue = parseFloat(tokens[8]);
-
-        //return {chr: chr, start: start, end: end, name: name, score: score, strand: strand, signal: signal,
-        //    pValue: pValue, qValue: qValue};
-        return {chr: chr, start: start, end: end, pvalue: pValue};
+        const feature = {
+            chr: tokens[0],
+            start: parseInt(tokens[1]) - 1,
+            end: parseInt(tokens[2]),
+            'Strongest SNP-risk allele': tokens[3],
+            'Disease/Phenotype': tokens[4],
+            'P-value': tokens[5],
+            'Odds ratio or beta': tokens[6],
+        }
+        if (tokens.length > 6) {
+            'https://www.ncbi.nlm.nih.gov/pubmed/'
+            feature['PUBMEDID'] = `<a target = "blank" href = "https://www.ncbi.nlm.nih.gov/pubmed/${tokens[7]}">${tokens[7]}</a>`
+        }
+        return feature
     }
 
     /**
@@ -948,7 +976,7 @@ var igv = (function (igv) {
      */
     function decodeGFF(tokens, ignore) {
 
-        var tokenCount, chr, start, end, strand, type, score, phase, attributeString, id, parent, color, name,
+        var tokenCount, chr, start, end, strand, type, score, phase, attributeString, color, name,
             transcript_id, i,
             format = this.format;
 
@@ -969,22 +997,27 @@ var igv = (function (igv) {
         // Find ID and Parent, or transcript_id
         var delim = ('gff3' === format) ? '=' : /\s+/;
         var attributes = {};
-        attributeString.split(';').forEach(function (kv) {
-            var t = kv.trim().split(delim, 2), key, value;
+        for (let kv of  attributeString.split(';')) {
+            const t = kv.trim().split(delim, 2)
             if (t.length == 2) {
-                key = t[0].trim();
-                value = t[1].trim();
+                const key = t[0].trim();
+                let value = t[1].trim();
+
                 //Strip off quotes, if any
                 if (value.startsWith('"') && value.endsWith('"')) {
                     value = value.substr(1, value.length - 2);
                 }
-                if ("ID" === t[0]) id = t[1];
-                else if ("Parent" === t[0]) parent = t[1];
-                else if ("color" === t[0].toLowerCase()) color = igv.Color.createColorString(t[1]);
-                else if ("transcript_id" === t[0]) id = t[1];     // gtf format
-                attributes[key] = value;
+
+                const keyLower = key.toLowerCase()
+                if ("color" === keyLower || "colour" === keyLower) color = igv.Color.createColorString(t[1]);
+                else {
+                    if ('gff3' === format) {
+                        value = decodeURIComponent(value)
+                    }
+                    attributes[key] = value;
+                }
             }
-        });
+        }
 
         // Find name (label) property
         if (this.nameField) {
@@ -995,15 +1028,15 @@ var igv = (function (igv) {
                 if (attributes.hasOwnProperty(gffNameFields[i])) {
                     this.nameField = gffNameFields[i];
                     name = attributes[this.nameField];
-
-
                     break;
                 }
             }
         }
 
+        const id = attributes["ID"] || attributes["transcript_id"]
+        const parent = attributes["Parent"]
 
-        return {
+        return new GFFFeature({
             id: id,
             parent: parent,
             name: name,
@@ -1015,26 +1048,34 @@ var igv = (function (igv) {
             strand: strand,
             color: color,
             attributeString: attributeString,
-            popupData: function () {
-                var kvs = this.attributeString.split(';'),
-                    pd = [],
-                    key, value;
-                kvs.forEach(function (kv) {
-                    var t = kv.trim().split(delim, 2);
-                    if (t.length === 2 && t[1] !== undefined) {
-                        key = t[0].trim();
-                        value = t[1].trim();
-                        //Strip off quotes, if any
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substr(1, value.length - 2);
-                        }
-                        pd.push({name: key, value: value});
-                    }
-                });
-                return pd;
-            }
+            delim: delim
+        })
 
-        };
+    }
+
+    function GFFFeature(props) {
+        Object.assign(this, props)
+    }
+
+    GFFFeature.prototype.popupData = function (genomicLocation) {
+        const kvs = this.attributeString.split(';')
+        const pd = [];
+        pd.push({name: 'type', value: this.type})
+        pd.push({name: 'start', value: this.start + 1})
+        pd.push({name: 'end', value: this.end})
+        for (let kv of kvs) {
+            const t = kv.trim().split(this.delim, 2);
+            if (t.length === 2 && t[1] !== undefined) {
+                const key = t[0].trim();
+                let value = t[1].trim();
+                //Strip off quotes, if any
+                if (value.startsWith('"') && value.endsWith('"')) {
+                    value = value.substr(1, value.length - 2);
+                }
+                pd.push({name: key, value: value});
+            }
+        }
+        return pd;
     }
 
     /**

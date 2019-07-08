@@ -58,6 +58,11 @@ var igv = (function (igv) {
 
         const browser = new igv.Browser(config, $('<div class="igv-track-container-div">')[0]);
 
+        // Backward compatibility -- globally visible.   This will be removed in a future release
+        if (!igv.browser) {
+            igv.browser = browser;
+        }
+
         browser.parent = parentDiv;
 
         $(parentDiv).append(browser.$root);
@@ -74,7 +79,7 @@ var igv = (function (igv) {
         browser.userFeedback = new igv.UserFeedback(browser.$content);
         browser.userFeedback.hide();
 
-        browser.popover = new igv.Popover(browser.$content, browser);
+        // browser.popover = new igv.Popover(browser.$content, browser);
 
         browser.alertDialog = new igv.AlertDialog(browser.$content, browser);
 
@@ -137,22 +142,16 @@ var igv = (function (igv) {
 
                 allBrowsers.push(browser);
 
-                // Backward compatibility -- globally visible.   This will be removed in a future release
-                if (!igv.browser) {
-                    igv.browser = browser;
-                }
-
                 return browser;
             })
 
 
         function loadSession(config) {
-            if(config.sessionURL) {
+            if (config.sessionURL) {
                 return browser.loadSession({
                     url: config.sessionURL
                 })
-            }
-            else {
+            } else {
                 return browser.loadSessionObject(config)
             }
         }
@@ -332,6 +331,11 @@ var igv = (function (igv) {
             browser.trackLabelControl = new igv.TrackLabelControl($toggle_button_container, browser);
         }
 
+        // SVG save button
+        if (config.showSVGButton) {
+            browser.svgSaveControl = new igv.SVGSaveControl($toggle_button_container, browser);
+        }
+
         // zoom widget
         browser.zoomWidget = new igv.ZoomWidget(browser, $igv_nav_bar_right_container);
 
@@ -367,6 +371,10 @@ var igv = (function (igv) {
 
         if (undefined === config.showCenterGuideButton) {
             config.showCenterGuideButton = true;
+        }
+
+        if (undefined === config.showSVGButton) {
+            config.showSVGButton = true;
         }
 
         if (undefined === config.showTrackLabelButton) {
@@ -416,7 +424,6 @@ var igv = (function (igv) {
         if (config.showSequence) {
             config.tracks.push({type: "sequence", order: -Number.MAX_VALUE});
         }
-
     }
 
 
@@ -430,6 +437,8 @@ var igv = (function (igv) {
         i1 = uri.indexOf("?");
         i2 = uri.lastIndexOf("#");
 
+        let files
+        let indexURLs
         if (i1 >= 0) {
             if (i2 < 0) i2 = uri.length;
             for (i = i1 + 1; i < i2;) {
@@ -445,20 +454,37 @@ var igv = (function (igv) {
 
                     if ('file' === key) {
                         // IGV desktop style file parameter
-                        if (!config.tracks) config.tracks = [];
-                        value.split(',').forEach(function (t) {
-                            config.tracks.push({
-                                url: t
-                            })
-                        });
-                    }
-                    else {
+                        files = value.split(',')
+                    } else if ('index' === key) {
+                        // IGV desktop style index parameter
+                        indexURLs = value.split(',')
+                    } else {
                         config[key] = value;
                     }
                     i = j + 1;
                 }
             }
         }
+
+        if (files) {
+
+            if (!config.tracks)
+                config.tracks = []
+            for (let i = 0; i < files.length; i++) {
+
+                if(files[i].endsWith(".xml") || files[i].endsWith(".json")) {
+                    config.sessionURL = files[i]
+                    break;
+                }
+
+                const trackConfig = {url: files[i]}
+                if (indexURLs && indexURLs.length > i) {
+                    trackConfig.indexURL = indexURLs[i]
+                }
+                config.tracks.push(trackConfig)
+            }
+        }
+
         return query;
     }
 

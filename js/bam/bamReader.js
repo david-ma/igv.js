@@ -73,7 +73,7 @@ var igv = (function (igv) {
             const promises = [];
             for (let c of chunks) {
                 var fetchMin = c.minv.block,
-                    fetchMax = c.maxv.block + 65000,   // Make sure we get the whole block.
+                    fetchMax = c.maxv.block + MAX_GZIP_BLOCK_SIZE,   // Make sure we get the whole block.
                     range = {start: fetchMin, size: fetchMax - fetchMin + 1};
                 promises.push(igv.xhr.loadArrayBuffer(this.bamPath, igv.buildOptions(this.config, {range: range})))
             }
@@ -81,10 +81,14 @@ var igv = (function (igv) {
             const compressedChunks = await Promise.all(promises)
 
             for (let i = 0; i < chunks.length; i++) {
-                const compressed = compressedChunks[i]
-                const c = chunks[i]
-                var ba = new Uint8Array(igv.unbgzf(compressed)); //new Uint8Array(igv.unbgzf(compressed)); //, c.maxv.block - c.minv.block + 1));
-                igv.BamUtils.decodeBamRecords(ba, c.minv.offset, alignmentContainer, this.indexToChr, chrId, bpStart, bpEnd, this.filter);
+                try {
+                    const compressed = compressedChunks[i]
+                    const c = chunks[i]
+                    var ba = new Uint8Array(igv.unbgzf(compressed)); //new Uint8Array(igv.unbgzf(compressed)); //, c.maxv.block - c.minv.block + 1));
+                    igv.BamUtils.decodeBamRecords(ba, c.minv.offset, alignmentContainer, this.indexToChr, chrId, bpStart, bpEnd, this.filter);
+                } catch (e) {
+                    console.error("Error decompressing chunk " + i)
+                }
 
             }
 

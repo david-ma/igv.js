@@ -148,7 +148,7 @@ var igv = (function (igv) {
     };
 
 
-    igv.Browser.prototype.toSVG = function (config) {
+    igv.Browser.prototype.toSVG = function () {
 
         const trackContainerBBox = this.trackContainerDiv.getBoundingClientRect();
         const anyViewportContainerBBox = this.trackViews[0].$viewportContainer.get(0).getBoundingClientRect();
@@ -201,23 +201,24 @@ var igv = (function (igv) {
         // reset height to trim away unneeded svg canvas real estate. Yes, a bit of a hack.
         svgContext.setHeight(h_output);
 
-        let svg = svgContext.getSerializedSvg(true);
-
-        return svg;
+        return svgContext.getSerializedSvg(true);
 
     };
 
     igv.Browser.prototype.renderSVG = function (config) {
 
-        let svg = this.toSVG(config)
+        let svg = this.toSVG();
 
         if (config.$container) {
+
+            const trackContainerBBox = this.trackContainerDiv.getBoundingClientRect();
+
             config.$container.empty();
             config.$container.width(trackContainerBBox.width);
             config.$container.append(svg);
         }
 
-        const path = config.filename ? config.filename : 'igv-app.svg';
+        const path = config.filename || 'igv.svg';
         const data = URL.createObjectURL(new Blob([svg], {type: "application/octet-stream"}));
         igv.download(path, data);
 
@@ -249,29 +250,32 @@ var igv = (function (igv) {
 
             const urlOrFile = options.url || options.file
 
-            let filename = options.filename
-            if (!filename) {
-                filename = (options.url ? igv.getFilename(options.url) : options.file.name)
-            }
 
             if (options.url && (options.url.startsWith("blob:") || options.url.startsWith("data:"))) {
 
                 var json = igv.Browser.uncompressSession(options.url);
                 return JSON.parse(json);
 
-            } else if (filename.endsWith(".xml")) {
-
-                const knownGenomes = await igv.GenomeUtils.getKnownGenomes()
-
-                const string = await igv.xhr.loadString(urlOrFile)
-
-                return new igv.XMLSession(string, knownGenomes);
-
-
-            } else if (filename.endsWith(".json")) {
-                return igv.xhr.loadJson(urlOrFile);
             } else {
-                undefined;
+                let filename = options.filename
+                if (!filename) {
+                    filename = (options.url ? igv.getFilename(options.url) : options.file.name)
+                }
+
+                if (filename.endsWith(".xml")) {
+
+                    const knownGenomes = await igv.GenomeUtils.getKnownGenomes()
+
+                    const string = await igv.xhr.loadString(urlOrFile)
+
+                    return new igv.XMLSession(string, knownGenomes);
+
+
+                } else if (filename.endsWith(".json")) {
+                    return igv.xhr.loadJson(urlOrFile);
+                } else {
+                    return undefined;
+                }
             }
 
         }
@@ -383,7 +387,7 @@ var igv = (function (igv) {
         if (genomeConfig.tracks) {
             await self.loadTrackList(genomeConfig.tracks);
         }
-        
+
         self.resize();    // Force recomputation and repaint
         return self.genome;
 
@@ -499,6 +503,11 @@ var igv = (function (igv) {
         this.cursorGuide.$guide.show();
         this.cursorGuideVisible = true;
     };
+
+    igv.Browser.prototype.setCustomCursorGuideMouseHandler = function (mouseHandler) {
+        this.cursorGuide.customMouseHandler = mouseHandler;
+    };
+
 
     // center guide
     igv.Browser.prototype.hideCenterGuide = function () {
@@ -1169,7 +1178,7 @@ var igv = (function (igv) {
         let viewports = viewportOrUndefined ? [viewportOrUndefined] : this.trackViews[0].viewports;
         viewports.forEach((viewport) => {
 
-            const referenceFrame = viewport.genomicState.referenceFrame;
+            const referenceFrame = viewport.genomicState.referenceFrame
             const chromosome = referenceFrame.getChromosome();
             const chromosomeLengthBP = chromosome.bpLength - chromosome.bpStart;
 
@@ -1178,19 +1187,20 @@ var igv = (function (igv) {
                 chromosomeLengthBP / viewport.$viewport.width();
 
             const centerBP = undefined === centerBPOrUndefined ?
-                (viewport.genomicState.referenceFrame.start + viewport.genomicState.referenceFrame.toBP(viewport.$viewport.width() / 2.0)) :
+                (referenceFrame.start + referenceFrame.toBP(viewport.$viewport.width() / 2.0)) :
                 centerBPOrUndefined;
 
             let bpp;
             if (scaleFactor < 1.0) {
-                bpp = Math.max(viewport.genomicState.referenceFrame.bpPerPixel * scaleFactor, bppThreshold);
+                bpp = Math.max(referenceFrame.bpPerPixel * scaleFactor, bppThreshold);
             } else {
-                bpp = Math.min(viewport.genomicState.referenceFrame.bpPerPixel * scaleFactor, bppThreshold);
+                bpp = Math.min(referenceFrame.bpPerPixel * scaleFactor, bppThreshold);
             }
 
             const viewportWidthBP = bpp * viewport.$viewport.width();
-            viewport.genomicState.referenceFrame.start = centerBP - (viewportWidthBP / 2)
-            viewport.genomicState.referenceFrame.bpPerPixel = bpp;
+            referenceFrame.start = centerBP - (viewportWidthBP / 2)
+            referenceFrame.bpPerPixel = bpp;
+            referenceFrame.clamp(viewport.$viewport.width())
             self.updateViews(viewport.genomicState);
 
         });
@@ -1359,15 +1369,34 @@ var igv = (function (igv) {
 
     igv.Browser.prototype.emptyViewportContainers = function () {
 
-        $(this.trackContainerDiv).find('.igv-scrollbar-outer-div').remove();
-        $(this.trackContainerDiv).find('.igv-viewport-div').remove();
-        $(this.trackContainerDiv).find('.igv-ruler-sweeper-div').remove();
-        this.$contentHeader.empty();
+        for (let trackView of this.trackViews) {
 
-        this.trackViews.forEach(function (trackView) {
+            if (trackView.$outerScroll) {
+                trackView.$outerScroll.remove();
+            }
+
+            for (let viewport of trackView.viewports) {
+
+                if (viewport.rulerSweeper) {
+                    viewport.rulerSweeper.$rulerSweeper.remove();
+                }
+
+                if (viewport.popover) {
+                    viewport.popover.$popover.off();
+                    viewport.popover.$popover.empty();
+                    viewport.popover.$popover.remove();
+                }
+
+                viewport.$viewport.remove();
+            }
+
+            delete trackView.viewports;
             trackView.viewports = [];
-            trackView.scrollbar = undefined;
-        });
+
+            delete trackView.scrollbar;
+        }
+
+        this.$contentHeader.empty();
 
     };
 
@@ -1397,59 +1426,50 @@ var igv = (function (igv) {
         return this.search(chrName + ":" + start + "-" + end);
     };
 
-    igv.Browser.prototype.search = function (string, init) {
+    igv.Browser.prototype.search = async function (string, init) {
 
-        var self = this,
-            loci;
+        const self = this
 
-        const genome = this.genome;
+        const genome = this.genome
 
         if (string && string.trim().toLowerCase() === "all") string = "all";
 
-        loci = string.split(' ');
+        const loci = string.split(' ')
 
-        return createGenomicStateList(loci)
+        let genomicStateList = await createGenomicStateList(loci)
+        if (!genomicStateList || genomicStateList.length === 0) {
+            // If nothing is found and there are spaces, consider the possibility that the search term itself has spaces
+            genomicStateList = await createGenomicStateList([string])
+        }
 
-            .then(function (genomicStateList) {
+        if (genomicStateList.length > 0) {
 
-                if (genomicStateList.length > 0) {
+            this.emptyViewportContainers();
+            this.genomicStateList = genomicStateList;
+            this.buildViewportsWithGenomicStateList(genomicStateList);
 
-                    self.emptyViewportContainers();
+            // assign ids to the state objects
+            for (let gs of genomicStateList) {
+                gs.id = igv.guid();
+            }
 
-                    self.genomicStateList = genomicStateList;
+        } else {
+            throw new Error('Unrecognized locus ' + string);
+        }
 
-                    self.buildViewportsWithGenomicStateList(genomicStateList);
+        if (this.ideoPanel) {
+            this.ideoPanel.discardPanels();
+            const panelWidth = self.viewportContainerWidth() / genomicStateList.length;
+            this.ideoPanel.buildPanels(this.$contentHeader, panelWidth);
+        }
 
-                    // assign ids to the state objects
-                    for (let gs of genomicStateList) {
-                        gs.id = igv.guid();
-                    }
+        this.updateUIWithGenomicStateListChange(genomicStateList);
 
-                    return genomicStateList
+        if (!init) {
+            this.updateViews();
+        }
 
-                } else {
-                    throw new Error('Unrecognized locus ' + string);
-                }
-
-            })
-            .then(function (genomicStateList) {
-
-                var panelWidth;
-
-                if (self.ideoPanel) {
-                    self.ideoPanel.discardPanels();
-                    panelWidth = self.viewportContainerWidth() / genomicStateList.length;
-                    self.ideoPanel.buildPanels(self.$contentHeader, panelWidth);
-                }
-
-                self.updateUIWithGenomicStateListChange(genomicStateList);
-
-                if (!init) {
-                    self.updateViews();
-                }
-
-                return genomicStateList;
-            })
+        return genomicStateList;
 
 
         /**
@@ -1459,55 +1479,23 @@ var igv = (function (igv) {
          *
          * @param loci - array of locus strings (e.g. chr1:1-100,  egfr)
          */
-        function createGenomicStateList(loci) {
-
+        async function createGenomicStateList(loci) {
 
             let searchConfig = self.searchConfig;
-            let ordered = {};
-            let unique = [];
-
-            // prune duplicates as the order list is built
-            loci.forEach(function (locus, index) {
-                if (undefined === ordered[locus]) {
-                    unique.push(locus);
-                    ordered[locus] = unique.indexOf(locus);
-                }
-            });
-
             let result = [];
-            let geneNameLoci = [];
-            let dictionary = {};
 
             // Try locus string first  (e.g.  chr1:100-200)
-            unique.forEach(function (locus) {
-
+            for (let locus of loci) {
                 let genomicState = isLocusChrNameStartEnd(locus, self.genome);
-
                 if (genomicState) {
                     genomicState.locusSearchString = locus;
                     result.push(genomicState);
-                    dictionary[locus] = genomicState;
                 }
                 else {
-                    geneNameLoci.push(locus);
-                }
-            });
-
-            if (geneNameLoci.length === 0) {
-
-                return Promise.resolve(appendReferenceFrames(result));
-
-            } else {
-
-                // Search based on feature symbol
-                // Try local feature cache first.  This is created from feature tracks tagged "searchable"
-                let promises = [];
-                geneNameLoci.forEach(function (locus) {
-                    var feature, genomicState, chromosome;
-
-                    feature = self.featureDB[locus.toLowerCase()];
+                    // Try local feature cache.    This is created from feature tracks tagged "searchable"
+                    const feature = self.featureDB[locus.toLowerCase()];
                     if (feature) {
-                        chromosome = self.genome.getChromosome(feature.chr);
+                        const chromosome = self.genome.getChromosome(feature.chr);
                         if (chromosome) {
                             genomicState = {
                                 chromosome: chromosome,
@@ -1517,104 +1505,45 @@ var igv = (function (igv) {
                             }
                             igv.Browser.validateLocusExtent(genomicState.chromosome.bpLength, genomicState, self.minimumBases());
                             result.push(genomicState);
-                            dictionary[locus] = genomicState;
                         }
-                    } else {
-                        promises.push(searchPromise(locus));  // Not found, create promise to search via webservice
                     }
-                });
-
-                // Finally try search webservice
-                if (promises.length > 0) {
-
-                    return Promise.all(promises)
-
-                        .then(function (searchResponses) {
-
-                            searchResponses.forEach(function (response) {
-
-                                const genomicState = processSearchResult(response.result, response.locusSearchString);
-
-                                if (genomicState) {
-                                    result.push(genomicState);
-                                    dictionary[genomicState.locusSearchString] = genomicState;
-                                }
-                            });
-
-                            let cooked = Array(Object.keys(dictionary).length);
-
-                            result.forEach(function (r) {
-                                let key = r.locusSearchString;
-                                let index = ordered[key];
-                                cooked[index] = r;
-                            });
-
-                            return appendReferenceFrames(preserveOrder(result, dictionary, ordered));
-                        });
-                } else {
-
-                    return Promise.resolve(appendReferenceFrames(preserveOrder(result, dictionary, ordered)));
+                    else {
+                        // Try webservice
+                        const response = await searchWebService(locus)
+                        const genomicState = processSearchResult(response.result, response.locusSearchString);
+                        if (genomicState) {
+                            result.push(genomicState);
+                        }
+                    }
                 }
+                appendReferenceFrames(result);
             }
 
+            return result;
 
             function appendReferenceFrames(genomicStateList) {
-
                 const viewportWidth = self.viewportContainerWidth() / genomicStateList.length;
-
                 genomicStateList.forEach(function (gs) {
                     gs.referenceFrame = new igv.ReferenceFrame(genome, gs.chromosome.name, gs.start, gs.end, (gs.end - gs.start) / viewportWidth);
                 });
-
                 return genomicStateList;
             }
 
-            /* End of function  */
-            function preserveOrder(list, dictionary, indexDictionary) {
-                var orderedList;
-
-                orderedList = Array(Object.keys(dictionary).length);
-
-                list.forEach(function (g) {
-                    var key,
-                        index;
-                    key = g.locusSearchString;
-                    index = indexDictionary[key];
-                    orderedList[index] = g;
-                });
-
-                return orderedList;
-                // return list;
-
-            }
-
-            function searchPromise(locus) {
-
-                var path = searchConfig.url.replace("$FEATURE$", locus);
-
+            async function searchWebService(locus) {
+                let path = searchConfig.url.replace("$FEATURE$", locus);
                 if (path.indexOf("$GENOME$") > -1) {
                     path = path.replace("$GENOME$", (self.genome.id ? self.genome.id : "hg19"));
                 }
-
-                return igv.xhr.loadString(path)
-                    .then(function (result) {
-                        return {
-                            result: result,
-                            locusSearchString: locus
-                        }
-                    });
-
+                const result = await igv.xhr.loadString(path)
+                return {
+                    result: result,
+                    locusSearchString: locus
+                }
             }
 
             function processSearchResult(searchServiceResponse, locusSearchString) {
 
-                var results,
-                    result,
-                    chr,
-                    start,
-                    end,
-                    geneNameLocusObject;
-
+                let results
                 if ('plain' === searchConfig.type) {
                     results = parseSearchResults(searchServiceResponse);
                 } else {
@@ -1631,17 +1560,16 @@ var igv = (function (igv) {
 
                     // Ingoring all but first result for now
                     // TODO -- present all and let user select if results.length > 1
-                    result = results[0];
+                    const result = results[0];
 
-                    //
                     if (!(result.hasOwnProperty(searchConfig.chromosomeField) && (result.hasOwnProperty(searchConfig.startField)))) {
-                        console.log("Search service results must includ chromosome and start fields: " + result);
+                        console.log("Search service results must include chromosome and start fields: " + result);
                         return undefined;
                     }
 
-                    chr = result[searchConfig.chromosomeField];
-                    start = result[searchConfig.startField] - searchConfig.coords;
-                    end = result[searchConfig.endField];
+                    const chr = result[searchConfig.chromosomeField];
+                    let start = result[searchConfig.startField] - searchConfig.coords;
+                    let end = result[searchConfig.endField];
 
                     if (undefined === end) {
                         end = start + 1;
@@ -1652,21 +1580,12 @@ var igv = (function (igv) {
                         end += self.flanking;
                     }
 
-                    geneNameLocusObject = Object.assign({}, result);
-
+                    const geneNameLocusObject = Object.assign({}, result);
                     geneNameLocusObject.chromosome = self.genome.getChromosome(chr);
                     geneNameLocusObject.start = start;
                     geneNameLocusObject.end = end;
                     geneNameLocusObject.locusSearchString = locusSearchString;
-
                     geneNameLocusObject.selection = new igv.GtexSelection(result[searchConfig.geneField], result[searchConfig.snpField]);
-
-
-                    // geneName = result.geneSymbol || result.gene;
-                    // geneNameLocusObject.locusSearchString = ('gtex' === geneNameLocusObject.type || 'snp' === geneNameLocusObject.type) ? result.snpId : geneName;
-                    //
-                    // obj = ('gtex' === geneNameLocusObject.type || 'snp' === geneNameLocusObject.type) ? {snp: result.snpId} : {gene: geneName};
-                    // geneNameLocusObject.selection = new igv.GtexSelection(obj);
 
                     return geneNameLocusObject;
 
@@ -1855,6 +1774,11 @@ var igv = (function (igv) {
         this.eventHandlers[eventName].push(fn);
     };
 
+    /**
+     * @deprecated use off()
+     * @param eventName
+     * @param fn
+     */
     igv.Browser.prototype.un = function (eventName, fn) {
         if (!this.eventHandlers[eventName]) {
             return;
@@ -1863,6 +1787,23 @@ var igv = (function (igv) {
         var callbackIndex = this.eventHandlers[eventName].indexOf(fn);
         if (callbackIndex !== -1) {
             this.eventHandlers[eventName].splice(callbackIndex, 1);
+        }
+    };
+
+    igv.Browser.prototype.off = function (eventName, fn) {
+
+        if (!eventName) {
+            this.eventHandlers = {}   // Remove all event handlers
+        }
+        else if (!fn) {
+            this.eventHandlers[eventName] = []  // Remove all eventhandlers matching name
+        }
+        else {
+            // Remove specific event handler
+            const callbackIndex = this.eventHandlers[eventName].indexOf(fn);
+            if (callbackIndex !== -1) {
+                this.eventHandlers[eventName].splice(callbackIndex, 1);
+            }
         }
     };
 
@@ -2001,7 +1942,11 @@ var igv = (function (igv) {
             }
             bytes = new Zlib.RawInflate(compressedBytes).decompress();
         }
-        const json = String.fromCharCode.apply(null, bytes);
+        let json = ''
+        for (let b of bytes) {
+            json += String.fromCharCode(b)
+        }
+
         return json;
 
 
@@ -2036,7 +1981,7 @@ var igv = (function (igv) {
             string = httpMessages[string];
         }
 
-        this.alertDialog.configure({ label: string });
+        this.alertDialog.configure({label: string});
         this.alertDialog.present($parent);
     };
 
@@ -2071,13 +2016,16 @@ var igv = (function (igv) {
 
     igv.Browser.prototype.cancelTrackPan = function () {
 
-        if (this.isDragging) {
-            this.updateViews();
-            this.fireEvent('trackdragend');
-        }
+        const dragEnd = this.isDragging
         this.isDragging = false;
         this.isScrolling = false;
         this.vpMouseDown = undefined;
+
+
+        if (dragEnd) {
+            this.updateViews();
+            this.fireEvent('trackdragend');
+        }
 
     }
 

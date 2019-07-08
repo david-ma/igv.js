@@ -23,6 +23,8 @@
  * THE SOFTWARE.
  */
 
+"use strict";
+
 var igv = (function (igv) {
 
     const MAX_GZIP_BLOCK_SIZE = (1 << 16);
@@ -41,6 +43,11 @@ var igv = (function (igv) {
         this.genome = genome;
 
         this.sourceType = (config.sourceType === undefined ? "file" : config.sourceType);
+
+        // Default GFF filter -- these feature types will be filtered out
+        if (undefined === config.filterTypes) {
+            config.filterTypes = ['chromosome', 'gene']
+        }
 
         if (config.features && Array.isArray(config.features)) {
             let features = config.features;
@@ -86,6 +93,7 @@ var igv = (function (igv) {
             }
         }
 
+
         this.visibilityWindow = config.visibilityWindow;
 
     };
@@ -121,7 +129,7 @@ var igv = (function (igv) {
                             if (features) {
 
                                 if ("gtf" === self.config.format || "gff3" === self.config.format || "gff" === self.config.format) {
-                                    features = (new igv.GFFHelper(self.config.format)).combineFeatures(features);
+                                    features = (new igv.GFFHelper(self.config)).combineFeatures(features);
                                 }
 
                                 // Assign overlapping features to rows
@@ -245,7 +253,7 @@ var igv = (function (igv) {
                         if (featureList) {
 
                             if ("gtf" === self.config.format || "gff3" === self.config.format || "gff" === self.config.format) {
-                                featureList = (new igv.GFFHelper(self.config.format)).combineFeatures(featureList);
+                                featureList = (new igv.GFFHelper(self.config)).combineFeatures(featureList);
                             }
 
                             // Assign overlapping features to rows
@@ -310,23 +318,18 @@ var igv = (function (igv) {
         // row number is assigned.
         function pack(featureList, maxRows) {
 
-            var rows = [];
-
+            const rows = [];
             featureList.sort(function (a, b) {
                 return a.start - b.start;
             })
-
-
             rows.push(-1000);
+
             featureList.forEach(function (feature) {
 
-                var i,
-                    r,
-                    len = Math.min(rows.length, maxRows),
-                    start = feature.start;
-
+                let r = 0
+                const len = Math.min(rows.length, maxRows)
                 for (r = 0; r < len; r++) {
-                    if (start >= rows[r]) {
+                    if (feature.start > rows[r]) {
                         feature.row = r;
                         rows[r] = feature.end;
                         return;
@@ -363,7 +366,7 @@ var igv = (function (igv) {
                 wg.end = genome.getGenomeCoordinate(f.chr, f.end);
 
                 // Don't draw exons in whole genome view
-                if(wg["exons"]) delete wg["exons"]
+                if (wg["exons"]) delete wg["exons"]
 
                 wgFeatures.push(wg);
             }

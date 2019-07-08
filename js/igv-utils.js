@@ -25,6 +25,24 @@
 
 var igv = (function (igv) {
 
+    igv.getMouseXY = function(domElement, event) {
+
+        // a DOMRect object with eight properties: left, top, right, bottom, x, y, width, height
+        const dr = domElement.getBoundingClientRect();
+
+        const xy =
+            {
+                x: event.clientX - dr.left,
+                y: event.clientY - dr.top,
+                xNormalized: (event.clientX - dr.left)/dr.width,
+                yNormalized: (event.clientY - dr.top)/dr.height,
+                width: dr.width,
+                height: dr.height
+            };
+
+        return xy;
+    };
+
     igv.getExtension = function (config) {
         var path,
             filename,
@@ -119,20 +137,32 @@ var igv = (function (igv) {
 
         $container.append(igv.createIcon("times"));
 
-        $container.on('click', closeHandler);
-        $container.on('touchend', closeHandler);
-
-        $container.on('mousedown', function (e) {
+        $container.on('click', function (e) {
+            e.preventDefault();
             e.stopPropagation();
+            closeHandler()
         });
 
-        $container.on('mouseup', function (e) {
-            e.stopPropagation();
-        });
-
-        $container.on('touchstart', function (e) {
-            e.stopPropagation();
-        });
+        // $container.on('touchend', function (e) {
+        //     e.preventDefault();
+        //     e.stopPropagation();
+        //     closeHandler()
+        // });
+        //
+        // $container.on('mousedown', function (e) {
+        //     e.preventDefault();
+        //     e.stopPropagation();
+        // });
+        //
+        // $container.on('mouseup', function (e) {
+        //     e.preventDefault();
+        //     e.stopPropagation();
+        // });
+        //
+        // $container.on('touchstart', function (e) {
+        //     e.preventDefault();
+        //     e.stopPropagation();
+        // });
 
     };
 
