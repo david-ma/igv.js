@@ -27,7 +27,7 @@ var igv = (function (igv) {
 
 
     var igvjs_version = "@VERSION";
-    igv.version = "Peter Mac build: 25-Mar-2019, igv.js v2.2.5"; // DKGM - Update this before building so we can easily query the version in production
+    igv.version = "Peter Mac build: 8-July-2019, igv.js v2.2.13"; // DKGM - Update this before building so we can easily query the version in production
 
     let allBrowsers = [];
 
